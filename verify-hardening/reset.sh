@@ -1,0 +1,2 @@
+rm *-actual
+rm *-root

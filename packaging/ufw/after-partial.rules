@@ -1,0 +1,32 @@
+# Add to end of /etc/ufw/after.rules
+
+# allow netfoil
+-A ufw-after-output -p tcp -d 1.1.1.2 --dport 443 -m cgroup --path "netfoil.slice" -j ACCEPT
+-A ufw-after-output -p tcp -d 1.0.0.2 --dport 443 -m cgroup --path "netfoil.slice" -j ACCEPT
+-A ufw-after-output -p tcp -d 1.1.1.1 --dport 443 -m cgroup --path "netfoil.slice" -j ACCEPT
+-A ufw-after-output -p tcp -d 1.0.0.1 --dport 443 -m cgroup --path "netfoil.slice" -j ACCEPT
+-A ufw-after-output -p tcp -d 8.8.8.8 --dport 443 -m cgroup --path "netfoil.slice" -j ACCEPT
+-A ufw-after-output -p tcp -d 8.8.4.4 --dport 443 -m cgroup --path "netfoil.slice" -j ACCEPT
+
+# block DNS providers for all other apps (should be part of general allowlist instead)
+# Cloudflare DNS
+-A ufw-after-output -p tcp -d 1.1.1.1 -j REJECT
+-A ufw-after-output -p udp -d 1.1.1.1 -j REJECT
+-A ufw-after-output -p tcp -d 1.0.0.1 -j REJECT
+-A ufw-after-output -p udp -d 1.0.0.1 -j REJECT
+-A ufw-after-output -p tcp -d 1.1.1.2 -j REJECT
+-A ufw-after-output -p udp -d 1.1.1.2 -j REJECT
+-A ufw-after-output -p tcp -d 1.0.0.2 -j REJECT
+-A ufw-after-output -p udp -d 1.0.0.2 -j REJECT
+
+# Google DNS
+-A ufw-after-output -p tcp -d 8.8.8.8 -j REJECT
+-A ufw-after-output -p udp -d 8.8.8.8 -j REJECT
+-A ufw-after-output -p tcp -d 8.8.4.4 -j REJECT
+-A ufw-after-output -p udp -d 8.8.4.4 -j REJECT
+
+# OpenDNS
+-A ufw-after-output -p tcp -d 208.67.222.222 -j REJECT
+-A ufw-after-output -p udp -d 208.67.222.222 -j REJECT
+-A ufw-after-output -p tcp -d 208.67.220.220 -j REJECT
+-A ufw-after-output -p udp -d 208.67.220.220 -j REJECT

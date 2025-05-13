@@ -1,0 +1,3 @@
+# netfoil threat model
+
+TBD

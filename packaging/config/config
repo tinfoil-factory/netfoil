@@ -1,0 +1,13 @@
+# Google DNS
+#  DoHURL=https://dns.google/dns-query
+#  DoHIPs=8.8.8.8,8.8.8.4
+# Cloudflare DNS without security filter
+#  DoHURL=https://cloudflare-dns.com/dns-query
+#  DoHIPs=1.1.1.1,1.0.0.1
+DoHURL=https://security.cloudflare-dns.com/dns-query
+DoHIPs=1.1.1.2,1.0.0.2
+
+# MinTTL=0
+# MaxTTL=4294967295
+# DenyPunycode=false
+# RemoveECH=false

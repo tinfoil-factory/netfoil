@@ -1,0 +1,145 @@
+# See man systemd.exec, systemd.service, systemd.resource-control
+# systemd status netfoil.service
+# journalctl -u netfoil.service
+
+[Unit]
+Description=DNS proxy
+After=network.target
+Requires=netfoil.socket
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=5
+DynamicUser=true
+
+# add --disable-speculation to disable speculative execution
+ExecStart=/usr/sbin/netfoil --config-directory /etc/netfoil
+
+BindReadOnlyPaths=/usr/sbin/netfoil
+BindReadOnlyPaths=/etc/netfoil
+BindReadOnlyPaths=/etc/ssl
+
+# This is used to set firewall rules external to netfoil
+Slice=netfoil.slice
+
+AmbientCapabilities=
+CapabilityBoundingSet=
+NoNewPrivileges=yes
+
+# List syscalls in the groups: systemd-analyze syscall-filter
+SystemCallArchitectures=native
+SystemCallFilter=@basic-io @file-system @io-event @network-io @process @signal madvise setrlimit
+
+# @default - cannot disable? (14/63)
+#SystemCallFilter=arch_prctl rt_sigreturn sched_getaffinity sched_yield execve futex getpid getrandom getrlimit gettid mmap nanosleep
+
+# @basic-io (3/17)
+#SystemCallFilter=close read write
+
+# @file-system (5/77)
+#SystemCallFilter=fcntl fstat getdents64 openat readlinkat
+
+# @network-io (9/22)
+#SystemCallFilter=connect getpeername getsockname getsockopt recvfrom sendto setsockopt socket
+
+# @signal (3/14)
+#SystemCallFilter=rt_sigaction rt_sigprocmask sigaltstack
+
+# @process (3/22)
+#SystemCallFilter=clone prctl tgkill
+
+# @io-event (4/17)
+#SystemCallFilter=epoll_create1 epoll_ctl epoll_pwait eventfd2
+
+# @system-service (1/45, also many groups included)
+#SystemCallFilter=madvise
+
+# @resources (1/13)
+#SystemCallFilter=setrlimit
+
+# Create /run/netfoil
+RuntimeDirectory=netfoil
+RuntimeDirectoryMode=0700
+
+RootDirectory=/run/netfoil
+
+# Alternative to custom mounts
+#ReadOnlyPaths=/
+#ReadWritePaths=
+#NoExecPaths=/
+#ExecPaths=/sbin/netfoil
+
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+
+# This might set AllowDevices=char-rtc r
+ProtectClock=yes
+
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+
+RemoveIPC=true
+UMask=0077
+
+# IPC namespace
+PrivateIPC=true
+
+# UTS namespace
+ProtectHostname=yes
+
+# Changes mounts (custom is more strict)
+# https://github.com/systemd/systemd/blob/main/src/core/namespace.c
+#
+ProtectControlGroups=yes
+ProtectHome=yes
+ProtectProc=invisible
+ProcSubset=pid
+ProtectSystem=strict
+PrivateTmp=true
+
+# Changes mounts and seccomp (custom is more strict)
+# https://github.com/systemd/systemd/blob/main/src/core/execute.c
+# https://github.com/systemd/systemd/blob/main/src/core/exec-invoke.c
+# https://github.com/systemd/systemd/blob/main/src/shared/seccomp-util.c
+#
+# seccomp _sysctl (custom filter does not allow it anyway)
+# /proc and /sys mounts (custom is more strict)
+ProtectKernelTunables=yes
+#
+# seccomp @raw-io (custom filter does not allow it anyway)
+PrivateDevices=true
+DevicePolicy=closed
+
+# It's disputed if user namespaces decrease or increase the risk, and it might not be available on all systems
+#PrivateUsers=true
+
+# This probably needs to be configurable / be set elsewhere
+# IPAddressAllow=127.0.0.1
+# IPAddressAllow=1.1.1.2
+# IPAddressAllow=1.0.0.2
+# IPAddressAllow=1.1.1.1
+# IPAddressAllow=1.0.0.1
+# IPAddressAllow=8.8.8.8
+# IPAddressAllow=8.8.8.4
+# IPAddressDeny=any
+
+# Looks like there might be bug in old versions of systemd so that this is ignored
+SocketBindDeny=any
+
+# Probably too strict in general
+#RestrictNetworkInterfaces=
+
+CPUQuota=50%
+MemoryMax=100M
+TasksMax=100
+
+# TODO IO & networking
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,7 @@
+[Unit]
+Description=netfoil slice
+Before=slices.target
+
+[Slice]
+# Used to pin to specific CPU cores, can be used to avoid sharing L1, L2 or LLC with other processes
+#AllowedCPUs=

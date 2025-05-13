@@ -1,0 +1,14 @@
+# IDE / Editor
+.idea
+.editorconfig
+.vscode
+
+# macOS
+.DS_Store
+
+# Ignore binaries (no file ending) in cmd
+cmd/**/*
+!/cmd/**/
+!/cmd/**/*.*
+*.swp
+netfoil

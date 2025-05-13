@@ -1,0 +1,36 @@
+# man apparmor.d
+abi <abi/4.0>,
+include <tunables/global>
+
+/usr/sbin/netfoil flags=(enforce) {
+  # /etc/apparmor.d/abstractions/base
+  include <abstractions/base>
+  network inet tcp,
+  network inet udp,
+  network inet6 tcp,
+  network inet6 udp,
+ 
+  /etc/netfoil/* r,
+  /etc/ssl/certs/ r,
+  /etc/ssl/certs/* r,
+
+  # remove some of the defaults
+  # TODO /proc, /sys, /etc
+  deny ptrace,
+  deny unix,
+
+  deny /usr/lib** mrwlkx,
+
+  deny /etc/ld.** mrwlkx,
+  deny /etc/gcrypt/** mrwlkx,
+  deny /etc/crypto-policies/** mrwlkx,
+  deny /etc/gnutls/** mrwlkx,
+
+  deny /dev/full mrwlkx,
+  deny /dev/zero mrwlkx,
+
+  deny /home/** mrwlkx,
+  deny /root/** mrwlkx,
+
+  deny /opt** mrwlkx,
+}
