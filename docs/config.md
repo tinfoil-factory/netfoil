@@ -42,14 +42,14 @@ List of IPs of the `DoHURL=`.
  - *Example*: `DoHIPs=1.1.1.2,1.0.0.2`
 
 ### LogAllowed=
-Log each allowed request on a single line: `<allow/deny>:<domain>:<record id>`.
+Log each allowed request on a single line: `<allow/deny>|<domain>|<record type>`.
 
  - *Required*: no
  - *Default*: `true`
  - *Example*: `LogAllowed=false`
 
 ### LogDenied=
-Log each allowed request on a single line: `<allow/deny>:<domain>:<record id>`.
+Log each allowed request on a single line: `<allow/deny>|<domain>|<record type>`.
 
  - *Required*: no
  - *Default*: `true`
