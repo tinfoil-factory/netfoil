@@ -52,6 +52,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	configureLogger(config)
+
 	conn, err := systemdSocketListener()
 	if err != nil {
 		println(err.Error())
@@ -102,6 +104,15 @@ func disableSpeculation(disable bool) error {
 	return nil
 }
 
+func configureLogger(config *dns.Config) {
+	opts := &slog.HandlerOptions{
+		Level: config.LogLevel,
+	}
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, opts))
+	slog.SetDefault(logger)
+}
+
 func systemdSocketListener() (*net.UDPConn, error) {
 	if _, ok := os.LookupEnv("LISTEN_FDS"); ok {
 		f := os.NewFile(uintptr(3), "netfoil.socket")
@@ -126,12 +137,11 @@ type Options struct {
 
 func processInput() (*Options, error) {
 	flags := flag.NewFlagSet("all", flag.ExitOnError)
-	var help, h, debugMode, disableSpeculation bool
+	var help, h, disableSpeculation bool
 	var configPath, ipString string
 	var portInt int
 	flags.BoolVar(&help, "help", false, "")
 	flags.BoolVar(&h, "h", false, "")
-	flags.BoolVar(&debugMode, "debug", false, "")
 	flags.BoolVar(&disableSpeculation, "disable-speculation", false, "")
 	flags.IntVar(&portInt, "port", 53, "")
 	flags.StringVar(&ipString, "ip", "127.0.0.1", "")
@@ -142,17 +152,6 @@ func processInput() (*Options, error) {
 		fmt.Println(usage)
 		os.Exit(1)
 	}
-
-	opts := &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	}
-
-	if debugMode {
-		opts.Level = slog.LevelDebug
-	}
-
-	logger := slog.New(slog.NewTextHandler(os.Stdout, opts))
-	slog.SetDefault(logger)
 
 	if portInt < 0 || portInt > 65535 {
 		return nil, fmt.Errorf("invalid port %d", portInt)

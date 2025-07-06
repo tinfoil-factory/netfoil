@@ -41,6 +41,28 @@ List of IPs of the `DoHURL=`.
  - *Required*: yes
  - *Example*: `DoHIPs=1.1.1.2,1.0.0.2`
 
+### LogAllowed=
+Log each allowed request on a single line: `<allow/deny>|<domain>|<record type>`.
+
+ - *Required*: no
+ - *Default*: `true`
+ - *Example*: `LogAllowed=false`
+
+### LogDenied=
+Log each allowed request on a single line: `<allow/deny>|<domain>|<record type>`.
+
+ - *Required*: no
+ - *Default*: `true`
+ - *Example*: `LogDenied=false`
+
+### LogLevel=
+Set log level.
+
+ - *Required*: no
+ - *Default*: `info`
+ - *Supported*: `info`, `debug`
+ - *Example*: `LogLevel=debug`
+
 ### MinTTL=
 In seconds. If a TTL in an answer is lower than this number, it will be replaced by this instead.
 

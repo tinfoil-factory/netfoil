@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 )
 
@@ -60,6 +61,21 @@ const (
 	ResponseCodeNotImp      ResponseCode = 4
 	ResponseCodeRefused     ResponseCode = 5
 )
+
+func (r RecordType) Name() string {
+	switch r {
+	case RecordTypeA:
+		return "A"
+	case RecordTypeCNAME:
+		return "CNAME"
+	case RecordTypeAAAA:
+		return "AAAA"
+	case RecordTypeHTTPS:
+		return "HTTPS"
+	default:
+		return strconv.Itoa(int(r))
+	}
+}
 
 type Header struct {
 	TransactionID         uint16

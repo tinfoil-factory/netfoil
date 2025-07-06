@@ -3,6 +3,7 @@ package dns
 import (
 	"bufio"
 	"fmt"
+	"log/slog"
 	"math"
 	"os"
 	"path/filepath"
@@ -34,6 +35,9 @@ type Config struct {
 	MaxTTL       uint32
 	DenyPunycode bool
 	RemoveECH    bool
+	LogAllowed   bool
+	LogDenied    bool
+	LogLevel     slog.Level
 }
 
 func ReadConfigFile(configDirectory string) (*Config, error) {
@@ -57,6 +61,9 @@ const (
 	keyMaxTTL       ConfigKey = "MaxTTL"
 	keyDenyPunycode ConfigKey = "DenyPunycode"
 	keyRemoveECH    ConfigKey = "RemoveECH"
+	keyLogAllowed   ConfigKey = "LogAllowed"
+	keyLogDenied    ConfigKey = "LogDenied"
+	keyLogLevel     ConfigKey = "LogLevel"
 )
 
 type ConfigMap struct {
@@ -82,8 +89,8 @@ func (c *ConfigMap) Get(key ConfigKey) (string, bool) {
 	return a, b
 }
 
-func (c *ConfigMap) GetBool(key ConfigKey) (bool, error) {
-	result := false
+func (c *ConfigMap) GetBool(key ConfigKey, defaultValue bool) (bool, error) {
+	result := defaultValue
 
 	stringValue := c.m[key]
 	if stringValue != "" {
@@ -92,6 +99,24 @@ func (c *ConfigMap) GetBool(key ConfigKey) (bool, error) {
 			return false, fmt.Errorf("invalid bool config value '%s': %s", key, stringValue)
 		}
 		result = v
+	}
+
+	return result, nil
+}
+
+func (c *ConfigMap) GetLogLevel(key ConfigKey, defaultValue slog.Level) (slog.Level, error) {
+	result := defaultValue
+
+	stringValue := c.m[key]
+	if stringValue != "" {
+		switch stringValue {
+		case "info":
+			result = slog.LevelInfo
+		case "debug":
+			result = slog.LevelDebug
+		default:
+			return 0, fmt.Errorf("unsupported log level '%s'", stringValue)
+		}
 	}
 
 	return result, nil
@@ -141,7 +166,11 @@ func parseConfig(scanner *bufio.Scanner) (*Config, error) {
 		keyMinTTL,
 		keyMaxTTL,
 		keyDenyPunycode,
-		keyRemoveECH)
+		keyRemoveECH,
+		keyLogAllowed,
+		keyLogDenied,
+		keyLogLevel,
+	)
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -189,12 +218,27 @@ func parseConfig(scanner *bufio.Scanner) (*Config, error) {
 		return nil, err
 	}
 
-	denyPunycode, err := configMap.GetBool(keyDenyPunycode)
+	denyPunycode, err := configMap.GetBool(keyDenyPunycode, false)
 	if err != nil {
 		return nil, err
 	}
 
-	removeECH, err := configMap.GetBool(keyRemoveECH)
+	removeECH, err := configMap.GetBool(keyRemoveECH, false)
+	if err != nil {
+		return nil, err
+	}
+
+	logAllowed, err := configMap.GetBool(keyLogAllowed, true)
+	if err != nil {
+		return nil, err
+	}
+
+	logDenied, err := configMap.GetBool(keyLogDenied, true)
+	if err != nil {
+		return nil, err
+	}
+
+	logLevel, err := configMap.GetLogLevel(keyLogLevel, slog.LevelInfo)
 	if err != nil {
 		return nil, err
 	}
@@ -206,6 +250,9 @@ func parseConfig(scanner *bufio.Scanner) (*Config, error) {
 		MaxTTL:       maxTTL,
 		DenyPunycode: denyPunycode,
 		RemoveECH:    removeECH,
+		LogAllowed:   logAllowed,
+		LogDenied:    logDenied,
+		LogLevel:     logLevel,
 	}, nil
 }
 
