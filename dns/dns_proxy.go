@@ -3,6 +3,7 @@ package dns
 import (
 	"fmt"
 	"github.com/tinfoil-factory/netfoil/lru"
+	"log/slog"
 	"net"
 	"strings"
 	"time"
@@ -15,6 +16,8 @@ type workerTask struct {
 }
 
 type workerResult struct {
+	question        *Question
+	allowed         bool
 	remote          *net.UDPAddr
 	rawResponse     []byte
 	response        *Response
@@ -95,92 +98,102 @@ func Server(conn *net.UDPConn, config *Config, policy *Policy) error {
 
 	go func() {
 		for result := range resultsChannel {
-			fmt.Printf("result\n")
-			for _, logEvent := range result.logEvents {
-				fmt.Printf("  %s\n", logEvent)
-			}
-
-			if len(result.filterReasons) > 0 {
-				fmt.Printf("  filter\n")
-			}
-			for _, reason := range result.filterReasons {
-				fmt.Printf("    %s\n", reason)
-			}
-
-			fmt.Printf("  cache hit: %t, external request: %t\n", result.cacheHit, result.externalRequest)
-			if result.response != nil {
-				fmt.Printf("  response [%d]\n", result.response.Flags.RCODE)
-				for _, answer := range result.response.Answers {
-					fmt.Printf("    name: %s\n", answer.Name)
-					fmt.Printf("      type: %d\n", answer.Type)
-					fmt.Printf("      TTL: %d\n", answer.TTL)
-
-					switch answer.Type {
-					case RecordTypeA:
-						fmt.Printf("      IPv4: %s\n", answer.IPv4.String())
-					case RecordTypeCNAME:
-						fmt.Printf("      CNAME: %s\n", answer.CNAME)
-					case RecordTypeAAAA:
-						fmt.Printf("      IPv6: %s\n", answer.IPv6.String())
-					case RecordTypeHTTPS:
-						name := "."
-						if answer.HTTPSRecord.TargetName != "" {
-							name = answer.HTTPSRecord.TargetName
-						}
-
-						alpn := ""
-						if len(answer.HTTPSRecord.ALPN) > 0 {
-							alpn = fmt.Sprintf(" alpn=\"%s\"", strings.Join(answer.HTTPSRecord.ALPN, ","))
-						}
-
-						ipv4Hints := ""
-						if len(answer.HTTPSRecord.IPv4Hint) > 0 {
-							sb := strings.Builder{}
-							for i, h := range answer.HTTPSRecord.IPv4Hint {
-								sb.WriteString(h.String())
-								if i < len(answer.HTTPSRecord.IPv4Hint)-1 {
-									sb.WriteString(",")
-								}
-							}
-
-							ipv4Hints = fmt.Sprintf(" ipv4hint=%s", sb.String())
-						}
-
-						ipv6Hints := ""
-						if len(answer.HTTPSRecord.IPv6Hint) > 0 {
-							sb := strings.Builder{}
-							for i, h := range answer.HTTPSRecord.IPv6Hint {
-								sb.WriteString(h.String())
-								if i < len(answer.HTTPSRecord.IPv6Hint)-1 {
-									sb.WriteString(",")
-								}
-							}
-
-							ipv6Hints = fmt.Sprintf(" ipv6hint=%s", sb.String())
-						}
-
-						ech := ""
-						if answer.HTTPSRecord.ECH != nil {
-							sb := strings.Builder{}
-							for i, e := range answer.HTTPSRecord.ECH {
-								sb.WriteString(e.PublicName)
-								if i < len(answer.HTTPSRecord.ECH)-1 {
-									sb.WriteString(",")
-								}
-							}
-
-							ech = fmt.Sprintf(" ech=%s", sb.String())
-						}
-
-						fmt.Printf("      HTTPS: %d %s%s%s%s%s\n", answer.HTTPSRecord.Priority, name, alpn, ipv4Hints, ipv6Hints, ech)
-					}
-				}
-			}
-			fmt.Printf("  time: %f\n", result.time.Seconds())
-
 			if result.err != nil {
 				fmt.Printf("error: worker failed to process: %s\n", result.err.Error())
 				continue
+			}
+
+			if result.allowed && config.LogAllowed {
+				fmt.Printf("allow:%s:%d\n", result.question.Name, result.question.Type)
+			}
+
+			if !result.allowed && config.LogDenied {
+				fmt.Printf("deny:%s:%d\n", result.question.Name, result.question.Type)
+			}
+
+			if config.LogLevel == slog.LevelDebug {
+				fmt.Printf("result\n")
+				for _, logEvent := range result.logEvents {
+					fmt.Printf("  %s\n", logEvent)
+				}
+
+				if len(result.filterReasons) > 0 {
+					fmt.Printf("  filter\n")
+				}
+				for _, reason := range result.filterReasons {
+					fmt.Printf("    %s\n", reason)
+				}
+
+				fmt.Printf("  cache hit: %t, external request: %t\n", result.cacheHit, result.externalRequest)
+				if result.response != nil {
+					fmt.Printf("  response [%d]\n", result.response.Flags.RCODE)
+					for _, answer := range result.response.Answers {
+						fmt.Printf("    name: %s\n", answer.Name)
+						fmt.Printf("      type: %d\n", answer.Type)
+						fmt.Printf("      TTL: %d\n", answer.TTL)
+
+						switch answer.Type {
+						case RecordTypeA:
+							fmt.Printf("      IPv4: %s\n", answer.IPv4.String())
+						case RecordTypeCNAME:
+							fmt.Printf("      CNAME: %s\n", answer.CNAME)
+						case RecordTypeAAAA:
+							fmt.Printf("      IPv6: %s\n", answer.IPv6.String())
+						case RecordTypeHTTPS:
+							name := "."
+							if answer.HTTPSRecord.TargetName != "" {
+								name = answer.HTTPSRecord.TargetName
+							}
+
+							alpn := ""
+							if len(answer.HTTPSRecord.ALPN) > 0 {
+								alpn = fmt.Sprintf(" alpn=\"%s\"", strings.Join(answer.HTTPSRecord.ALPN, ","))
+							}
+
+							ipv4Hints := ""
+							if len(answer.HTTPSRecord.IPv4Hint) > 0 {
+								sb := strings.Builder{}
+								for i, h := range answer.HTTPSRecord.IPv4Hint {
+									sb.WriteString(h.String())
+									if i < len(answer.HTTPSRecord.IPv4Hint)-1 {
+										sb.WriteString(",")
+									}
+								}
+
+								ipv4Hints = fmt.Sprintf(" ipv4hint=%s", sb.String())
+							}
+
+							ipv6Hints := ""
+							if len(answer.HTTPSRecord.IPv6Hint) > 0 {
+								sb := strings.Builder{}
+								for i, h := range answer.HTTPSRecord.IPv6Hint {
+									sb.WriteString(h.String())
+									if i < len(answer.HTTPSRecord.IPv6Hint)-1 {
+										sb.WriteString(",")
+									}
+								}
+
+								ipv6Hints = fmt.Sprintf(" ipv6hint=%s", sb.String())
+							}
+
+							ech := ""
+							if answer.HTTPSRecord.ECH != nil {
+								sb := strings.Builder{}
+								for i, e := range answer.HTTPSRecord.ECH {
+									sb.WriteString(e.PublicName)
+									if i < len(answer.HTTPSRecord.ECH)-1 {
+										sb.WriteString(",")
+									}
+								}
+
+								ech = fmt.Sprintf(" ech=%s", sb.String())
+							}
+
+							fmt.Printf("      HTTPS: %d %s%s%s%s%s\n", answer.HTTPSRecord.Priority, name, alpn, ipv4Hints, ipv6Hints, ech)
+						}
+					}
+				}
+				fmt.Printf("  time: %f\n", result.time.Seconds())
 			}
 
 			_, err = conn.WriteToUDP(result.rawResponse, result.remote)
@@ -214,11 +227,13 @@ func (w *worker) start() {
 	go func() {
 		for task := range w.taskQueue {
 			start := time.Now()
-			rawResponse, response, logEvents, filterReasons, cacheHit, externalRequest, err := w.process(&task)
+			rawResponse, question, allowed, response, logEvents, filterReasons, cacheHit, externalRequest, err := w.process(&task)
 			elapsed := time.Since(start)
 
 			w.resultsChannel <- workerResult{
 				remote:          task.remote,
+				question:        question,
+				allowed:         allowed,
 				rawResponse:     rawResponse,
 				response:        response,
 				logEvents:       logEvents,
@@ -232,7 +247,9 @@ func (w *worker) start() {
 	}()
 }
 
-func (w *worker) process(workerTask *workerTask) ([]byte, *Response, []LogEvent, []FilterReason, bool, bool, error) {
+func (w *worker) process(workerTask *workerTask) ([]byte, *Question, bool, *Response, []LogEvent, []FilterReason, bool, bool, error) {
+	var question *Question = nil
+	allowed := false
 	logEvents := make([]LogEvent, 0)
 	filterReasons := make([]FilterReason, 0)
 	var response *Response = nil
@@ -249,21 +266,20 @@ func (w *worker) process(workerTask *workerTask) ([]byte, *Response, []LogEvent,
 
 	request, err := UnmarshalRequest(buf[:responseLength])
 	if err != nil {
-		return nil, response, logEvents, filterReasons, cacheHit, externalRequest, err
+		return nil, question, allowed, response, logEvents, filterReasons, cacheHit, externalRequest, err
 	}
 
-	question := request.Questions[0]
+	question = &request.Questions[0]
 	if len(request.Questions) > 1 {
 		l := fmt.Sprintf("more than one domain")
 		logEvents = append(logEvents, LogEvent(l))
 	}
 
-	domain := question.Name
-	logEvents = append(logEvents, LogEvent(fmt.Sprintf("domain: %s", domain)))
+	logEvents = append(logEvents, LogEvent(fmt.Sprintf("domain: %s", question.Name)))
 	logEvents = append(logEvents, LogEvent(fmt.Sprintf("type: %d", question.Type)))
 
 	if supportedRequest(request) {
-		queryAllowed, filterReason := policy.queryIsAllowed(question)
+		queryAllowed, filterReason := policy.queryIsAllowed(*question)
 		filterReasons = append(filterReasons, filterReason...)
 		if queryAllowed {
 			key := fmt.Sprintf("%s:%d", question.Name, question.Type)
@@ -285,7 +301,7 @@ func (w *worker) process(workerTask *workerTask) ([]byte, *Response, []LogEvent,
 				candidateResponse, err = w.dohClient.DoH(request)
 				if err != nil {
 					// FIXME retries / proper response to client
-					return nil, response, logEvents, filterReasons, cacheHit, externalRequest, err
+					return nil, question, allowed, response, logEvents, filterReasons, cacheHit, externalRequest, err
 				}
 
 				w.cache.Set(key, &timedResponse{
@@ -297,12 +313,13 @@ func (w *worker) process(workerTask *workerTask) ([]byte, *Response, []LogEvent,
 			responseAllowed, filterReason := policy.responseIsAllowed(question.Type, candidateResponse)
 			filterReasons = append(filterReasons, filterReason...)
 			if responseAllowed {
+				allowed = true
 				response = candidateResponse
 			} else {
-				response = generateBlockResponse(question)
+				response = generateBlockResponse(*question)
 			}
 		} else {
-			response = generateBlockResponse(question)
+			response = generateBlockResponse(*question)
 		}
 	} else {
 		l := fmt.Sprintf("unsupported request type %d", question.Type)
@@ -332,8 +349,8 @@ func (w *worker) process(workerTask *workerTask) ([]byte, *Response, []LogEvent,
 
 	d, err := MarshalResponse(request, response)
 	if err != nil {
-		return nil, response, logEvents, filterReasons, cacheHit, externalRequest, err
+		return nil, question, allowed, response, logEvents, filterReasons, cacheHit, externalRequest, err
 	}
 
-	return d, response, logEvents, filterReasons, cacheHit, externalRequest, nil
+	return d, question, allowed, response, logEvents, filterReasons, cacheHit, externalRequest, nil
 }
