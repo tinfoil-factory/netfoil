@@ -104,11 +104,11 @@ func Server(conn *net.UDPConn, config *Config, policy *Policy) error {
 			}
 
 			if result.allowed && config.LogAllowed {
-				fmt.Printf("allow:%s:%d\n", result.question.Name, result.question.Type)
+				fmt.Printf("allow:%s:%s\n", result.question.Name, result.question.Type.Name())
 			}
 
 			if !result.allowed && config.LogDenied {
-				fmt.Printf("deny:%s:%d\n", result.question.Name, result.question.Type)
+				fmt.Printf("deny:%s:%s\n", result.question.Name, result.question.Type.Name())
 			}
 
 			if config.LogLevel == slog.LevelDebug {
