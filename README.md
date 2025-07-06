@@ -1,5 +1,6 @@
 # netfoil
 
+netfoil is a minimal, allowlist based, DNS proxy written in Go.
 DNS filtering, especially with a strict allowlist, can be a powerful way to reduce attack surface.
 netfoil was created to enable this filtering on the client side, while only supporting DNS over HTTPS (DoH) externally.
 netfoil is designed to be small enough to be auditable, and hardened enough to not be the weak link.
