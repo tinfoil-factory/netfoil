@@ -39,7 +39,7 @@ SystemCallArchitectures=native
 # @basic-io (4/18)
 SystemCallFilter=close read write pread64
 
-# @file-system (5/77)
+# @file-system (5/88)
 SystemCallFilter=fcntl fstat getdents64 openat readlinkat
 
 # @network-io (9/22)
