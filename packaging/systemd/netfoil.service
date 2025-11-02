@@ -36,7 +36,7 @@ SystemCallArchitectures=native
 # @default - cannot disable? (14/63)
 #SystemCallFilter=arch_prctl rt_sigreturn sched_getaffinity sched_yield execve futex getpid getrandom getrlimit gettid mmap nanosleep
 
-# @basic-io (3/17)
+# @basic-io (4/18)
 SystemCallFilter=close read write pread64
 
 # @file-system (5/77)
