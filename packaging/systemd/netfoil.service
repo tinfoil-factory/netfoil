@@ -37,7 +37,7 @@ SystemCallArchitectures=native
 #SystemCallFilter=arch_prctl rt_sigreturn sched_getaffinity sched_yield execve futex getpid getrandom getrlimit gettid mmap nanosleep
 
 # @basic-io (3/17)
-SystemCallFilter=close read write
+SystemCallFilter=close read write pread64
 
 # @file-system (5/77)
 SystemCallFilter=fcntl fstat getdents64 openat readlinkat
