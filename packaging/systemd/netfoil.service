@@ -29,34 +29,34 @@ NoNewPrivileges=yes
 
 # List syscalls in the groups: systemd-analyze syscall-filter
 SystemCallArchitectures=native
-SystemCallFilter=@basic-io @file-system @io-event @network-io @process @signal madvise setrlimit
+#SystemCallFilter=@basic-io @file-system @io-event @network-io @process @signal madvise setrlimit
 
 # @default - cannot disable? (14/63)
 #SystemCallFilter=arch_prctl rt_sigreturn sched_getaffinity sched_yield execve futex getpid getrandom getrlimit gettid mmap nanosleep
 
 # @basic-io (3/17)
-#SystemCallFilter=close read write
+SystemCallFilter=close read write
 
 # @file-system (5/77)
-#SystemCallFilter=fcntl fstat getdents64 openat readlinkat
+SystemCallFilter=fcntl fstat getdents64 openat readlinkat
 
 # @network-io (9/22)
-#SystemCallFilter=connect getpeername getsockname getsockopt recvfrom sendto setsockopt socket
+SystemCallFilter=connect getpeername getsockname getsockopt recvfrom sendto setsockopt socket
 
 # @signal (3/14)
-#SystemCallFilter=rt_sigaction rt_sigprocmask sigaltstack
+SystemCallFilter=rt_sigaction rt_sigprocmask sigaltstack
 
 # @process (3/22)
-#SystemCallFilter=clone prctl tgkill
+SystemCallFilter=clone prctl tgkill
 
 # @io-event (4/17)
-#SystemCallFilter=epoll_create1 epoll_ctl epoll_pwait eventfd2
+SystemCallFilter=epoll_create1 epoll_ctl epoll_pwait eventfd2
 
 # @system-service (1/45, also many groups included)
-#SystemCallFilter=madvise
+SystemCallFilter=madvise
 
 # @resources (1/13)
-#SystemCallFilter=setrlimit
+SystemCallFilter=setrlimit
 
 # Create /run/netfoil
 RuntimeDirectory=netfoil
