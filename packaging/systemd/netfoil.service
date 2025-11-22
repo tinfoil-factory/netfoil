@@ -14,7 +14,7 @@ RestartSec=5
 DynamicUser=true
 
 # add --disable-speculation to disable speculative execution
-ExecStart=/usr/sbin/netfoil --config-directory /etc/netfoil
+ExecStart=/usr/sbin/netfoil --config-directory /etc/netfoil --filter-system-calls
 
 BindReadOnlyPaths=/usr/sbin/netfoil
 BindReadOnlyPaths=/etc/netfoil
