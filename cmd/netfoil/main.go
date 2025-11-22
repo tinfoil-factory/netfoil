@@ -139,6 +139,8 @@ func applySystemCallFilter(filter bool) error {
 			unix.SYS_GETTID,
 			unix.SYS_MMAP,
 			unix.SYS_NANOSLEEP,
+			unix.SYS_EXIT,
+			unix.SYS_EXIT_GROUP,
 			// @sandbox
 			//unix.SYS_SECCOMP,
 
