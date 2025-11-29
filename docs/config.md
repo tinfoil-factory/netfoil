@@ -92,6 +92,13 @@ Boolean. If the ECH part of HTTPS responses should be removed, i.e. omitted from
 - *Default*: `false`
 - *Example*: `RemoveECH=true`
 
+### PinResponseDomain=
+Boolean. Whether to pin responses domain based on the config file `pin.response-domain`.
+
+- *Required*: no
+- *Default*: `false`
+- *Example*: `PinResponseDomain=true`
+
 ## Config directory
 The default config is located in [/packaging/config](/packaging/config). It should be placed in `<CONFIG DIRECTORY>`.
 
@@ -126,6 +133,11 @@ Example: `.example.com`
 List of TLDs, one per line.
 
 Example: `.com`
+
+### pin.response-domain
+List of allowed CNAME request/response pairs.
+
+Example: `example.com:cdn.example.com`
 
 ### known-reserved.ipv4
 List of known reserved IPv4 ranges. These are currently only here to be copy/pasted into `allow.ipv4` and `deny.ipv4`.

@@ -2,11 +2,12 @@ package dns
 
 import (
 	"fmt"
-	"github.com/tinfoil-factory/netfoil/lru"
 	"log/slog"
 	"net"
 	"strings"
 	"time"
+
+	"github.com/tinfoil-factory/netfoil/lru"
 )
 
 type workerTask struct {
@@ -310,7 +311,7 @@ func (w *worker) process(workerTask *workerTask) ([]byte, *Question, bool, *Resp
 				})
 			}
 
-			responseAllowed, filterReason := policy.responseIsAllowed(question.Type, candidateResponse)
+			responseAllowed, filterReason := policy.responseIsAllowed(question.Name, question.Type, candidateResponse)
 			filterReasons = append(filterReasons, filterReason...)
 			if responseAllowed {
 				allowed = true

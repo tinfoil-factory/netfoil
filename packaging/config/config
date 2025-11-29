@@ -11,6 +11,7 @@ DoHIPs=1.1.1.2,1.0.0.2
 # MaxTTL=4294967295
 # DenyPunycode=false
 # RemoveECH=false
+# PinResponseDomain=false
 # LogAllowed=true
 # LogDenied=true
 # LogLevel=info
