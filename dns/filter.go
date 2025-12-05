@@ -2,11 +2,12 @@ package dns
 
 import (
 	"fmt"
-	"github.com/tinfoil-factory/netfoil/suffixtrie"
 	"net"
 	"net/netip"
 	"regexp"
 	"strings"
+
+	"github.com/tinfoil-factory/netfoil/suffixtrie"
 )
 
 // https://datatracker.ietf.org/doc/html/rfc921
@@ -19,20 +20,22 @@ var ipv6Null = net.IP{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 const blockTTL = uint32(300)
 
 type Policy struct {
-	exactSearchAllow  *suffixtrie.Node
-	suffixSearchAllow *suffixtrie.Node
-	exactSearchBlock  *suffixtrie.Node
-	suffixSearchBlock *suffixtrie.Node
-	TLDs              map[string]struct{}
-	labelRegex        *regexp.Regexp
-	blockIPv4         []netip.Prefix
-	blockIPv6         []netip.Prefix
-	allowIPv4         []netip.Prefix
-	allowIPv6         []netip.Prefix
-	blockPunycode     bool
+	exactSearchAllow     *suffixtrie.Node
+	suffixSearchAllow    *suffixtrie.Node
+	exactSearchBlock     *suffixtrie.Node
+	suffixSearchBlock    *suffixtrie.Node
+	TLDs                 map[string]struct{}
+	labelRegex           *regexp.Regexp
+	blockIPv4            []netip.Prefix
+	blockIPv6            []netip.Prefix
+	allowIPv4            []netip.Prefix
+	allowIPv6            []netip.Prefix
+	blockPunycode        bool
+	pinResponseDomain    bool
+	pinResponseDomainMap map[string]map[string]struct{}
 }
 
-func NewPolicy(configDirectory string, blockPunycode bool) (*Policy, error) {
+func NewPolicy(configDirectory string, blockPunycode bool, pinResponseDomain bool) (*Policy, error) {
 	// TODO validate config
 	allowTLDs, err := readConfig(configDirectory, configFilenameAllowTLDs)
 	if err != nil {
@@ -165,18 +168,43 @@ func NewPolicy(configDirectory string, blockPunycode bool) (*Policy, error) {
 		allowIPv6 = append(allowIPv6, p)
 	}
 
+	pinResponseDomainRaw, err := readConfig(configDirectory, configFilenamePinResponseDomain)
+	if err != nil {
+		return nil, err
+	}
+	pinResponseDomainMap := make(map[string]map[string]struct{})
+
+	for _, d := range pinResponseDomainRaw {
+		parts := strings.Split(d, ":")
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid PinResponseDomain format: %s", d)
+		}
+
+		sourceDomain := parts[0]
+		destinationDomain := parts[1]
+		source, found := pinResponseDomainMap[sourceDomain]
+		if !found {
+			source = make(map[string]struct{})
+		}
+
+		source[destinationDomain] = struct{}{}
+		pinResponseDomainMap[sourceDomain] = source
+	}
+
 	return &Policy{
-		exactSearchAllow:  exactSearchAllow,
-		suffixSearchAllow: suffixSearchAllow,
-		exactSearchBlock:  exactSearchBlock,
-		suffixSearchBlock: suffixSearchBlock,
-		TLDs:              TLDs,
-		labelRegex:        labelRegex,
-		blockIPv4:         blockIPv4,
-		blockIPv6:         blockIPv6,
-		allowIPv4:         allowIPv4,
-		allowIPv6:         allowIPv6,
-		blockPunycode:     blockPunycode,
+		exactSearchAllow:     exactSearchAllow,
+		suffixSearchAllow:    suffixSearchAllow,
+		exactSearchBlock:     exactSearchBlock,
+		suffixSearchBlock:    suffixSearchBlock,
+		TLDs:                 TLDs,
+		labelRegex:           labelRegex,
+		blockIPv4:            blockIPv4,
+		blockIPv6:            blockIPv6,
+		allowIPv4:            allowIPv4,
+		allowIPv6:            allowIPv6,
+		blockPunycode:        blockPunycode,
+		pinResponseDomain:    pinResponseDomain,
+		pinResponseDomainMap: pinResponseDomainMap,
 	}, nil
 }
 
@@ -227,8 +255,13 @@ func (p *Policy) queryIsAllowed(question Question) (bool, []FilterReason) {
 	return true, reasons
 }
 
-func (p *Policy) responseIsAllowed(requestType RecordType, response *Response) (bool, []FilterReason) {
-	domains := make(map[string]struct{})
+type DomainPair struct {
+	SourceDomain      string
+	DestinationDomain string
+}
+
+func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, response *Response) (bool, []FilterReason) {
+	domains := make([]DomainPair, 0)
 	ipv4s := make(map[string]struct{})
 	ipv6s := make(map[string]struct{})
 
@@ -240,8 +273,6 @@ func (p *Policy) responseIsAllowed(requestType RecordType, response *Response) (
 			reasons = append(reasons, FilterReason(reason))
 			return false, reasons
 		}
-
-		domains[answer.Name] = struct{}{}
 
 		if answer.Type == RecordTypeA {
 			if requestType != RecordTypeA {
@@ -260,7 +291,10 @@ func (p *Policy) responseIsAllowed(requestType RecordType, response *Response) (
 				return false, reasons
 			}
 
-			domains[answer.CNAME] = struct{}{}
+			domains = append(domains, DomainPair{
+				SourceDomain:      answer.Name,
+				DestinationDomain: answer.CNAME,
+			})
 		}
 
 		if answer.Type == RecordTypeAAAA {
@@ -276,7 +310,10 @@ func (p *Policy) responseIsAllowed(requestType RecordType, response *Response) (
 		if answer.Type == RecordTypeHTTPS {
 			record := answer.HTTPSRecord
 			if record.TargetName != "" {
-				domains[record.TargetName] = struct{}{}
+				domains = append(domains, DomainPair{
+					SourceDomain:      questionName,
+					DestinationDomain: record.TargetName,
+				})
 			}
 
 			for _, ipv4 := range record.IPv4Hint {
@@ -288,19 +325,44 @@ func (p *Policy) responseIsAllowed(requestType RecordType, response *Response) (
 			}
 
 			for _, echConfig := range record.ECH {
-				domains[echConfig.PublicName] = struct{}{}
+				domains = append(domains, DomainPair{
+					SourceDomain:      questionName,
+					DestinationDomain: echConfig.PublicName,
+				})
 			}
 		}
 	}
 
-	for domain := range domains {
-		domainAllowed, domainReasons := p.domainIsAllowed(domain)
-		reasons = append(reasons, domainReasons)
+	uniqueDomains := make(map[string]struct{})
+	for _, domain := range domains {
+		uniqueDomains[domain.SourceDomain] = struct{}{}
+		uniqueDomains[domain.DestinationDomain] = struct{}{}
+	}
 
-		if !domainAllowed {
-			reason := fmt.Sprintf("block due to response domain: %s", domain)
-			reasons = append(reasons, FilterReason(reason))
+	for domain := range uniqueDomains {
+		correctFormat, reason := p.domainHasCorrectFormat(domain)
+		if !correctFormat {
+			reasons = append(reasons, reason)
 			return false, reasons
+		}
+	}
+
+	if p.pinResponseDomain {
+		for _, domain := range domains {
+			domainAllowed := false
+			source, foundSource := p.pinResponseDomainMap[domain.SourceDomain]
+			if foundSource {
+				_, foundDestination := source[domain.DestinationDomain]
+				if foundDestination {
+					domainAllowed = true
+				}
+			}
+
+			if !domainAllowed {
+				reason := fmt.Sprintf("block due to response domain: %s:%s", domain.SourceDomain, domain.DestinationDomain)
+				reasons = append(reasons, FilterReason(reason))
+				return false, reasons
+			}
 		}
 	}
 
@@ -362,6 +424,38 @@ func supportedInResponses(r RecordType) bool {
 }
 
 func (p *Policy) domainIsAllowed(domain string) (bool, FilterReason) {
+	correctlyFormatted, formatReason := p.domainHasCorrectFormat(domain)
+	if !correctlyFormatted {
+		return false, formatReason
+	}
+
+	if p.domainMatchesBlockExactly(domain) {
+		reason := fmt.Sprintf("block due to exact blocklist: %s", domain)
+		return false, FilterReason(reason)
+	}
+
+	if p.domainMatchesBlockSuffix(domain) {
+		reason := fmt.Sprintf("block due to suffix blocklist: %s", domain)
+		return false, FilterReason(reason)
+	}
+
+	// all block done, move to explicit allow
+
+	if p.domainMatchesAllowExactly(domain) {
+		reason := fmt.Sprintf("allow due to exact allowlist: %s", domain)
+		return true, FilterReason(reason)
+	}
+
+	if p.domainMatchesAllowSuffix(domain) {
+		reason := fmt.Sprintf("allow due to suffix allowlist: %s", domain)
+		return true, FilterReason(reason)
+	}
+
+	reason := fmt.Sprintf("block because no allow rule matched: %s", domain)
+	return false, FilterReason(reason)
+}
+
+func (p *Policy) domainHasCorrectFormat(domain string) (bool, FilterReason) {
 	// https://www.ietf.org/rfc/rfc1035.txt
 	if len(domain) > 253 {
 		reason := fmt.Sprintf("block due to domain being too long: %d", len(domain))
@@ -403,30 +497,8 @@ func (p *Policy) domainIsAllowed(domain string) (bool, FilterReason) {
 		return false, FilterReason(reason)
 	}
 
-	if p.domainMatchesBlockExactly(domain) {
-		reason := fmt.Sprintf("block due to exact blocklist: %s", domain)
-		return false, FilterReason(reason)
-	}
-
-	if p.domainMatchesBlockSuffix(domain) {
-		reason := fmt.Sprintf("block due to suffix blocklist: %s", domain)
-		return false, FilterReason(reason)
-	}
-
-	// all block done, move to explicit allow
-
-	if p.domainMatchesAllowExactly(domain) {
-		reason := fmt.Sprintf("allow due to exact allowlist: %s", domain)
-		return true, FilterReason(reason)
-	}
-
-	if p.domainMatchesAllowSuffix(domain) {
-		reason := fmt.Sprintf("allow due to suffix allowlist: %s", domain)
-		return true, FilterReason(reason)
-	}
-
-	reason := fmt.Sprintf("block because no allow rule matched: %s", domain)
-	return false, FilterReason(reason)
+	reason := fmt.Sprintf("allow due to correct format: %s", domain)
+	return true, FilterReason(reason)
 }
 
 func (p *Policy) domainMatchesAllowExactly(domain string) bool {
