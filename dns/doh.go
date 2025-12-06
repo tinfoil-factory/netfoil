@@ -1,15 +1,18 @@
 package dns
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"fmt"
-	"golang.org/x/net/context"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
+
+	"golang.org/x/net/context"
 )
 
 // https://datatracker.ietf.org/doc/html/rfc8484
@@ -58,7 +61,7 @@ func (c *DoHClient) DoH(request *Request) (*Response, error) {
 
 }
 
-func NewDoHClient(dohURL string, DoHIP string) (*DoHClient, error) {
+func NewDoHClient(dohURL string, DoHIP string, caCertPool *x509.CertPool) (*DoHClient, error) {
 	u, err := url.Parse(dohURL)
 	if err != nil {
 		return nil, err
@@ -77,6 +80,12 @@ func NewDoHClient(dohURL string, DoHIP string) (*DoHClient, error) {
 		KeepAlive: 30 * time.Second,
 	}
 
+	tlsConfig := &tls.Config{}
+
+	if caCertPool != nil {
+		tlsConfig.RootCAs = caCertPool
+	}
+
 	httpTransport := &http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			if addr == u.Hostname()+":443" {
@@ -84,6 +93,7 @@ func NewDoHClient(dohURL string, DoHIP string) (*DoHClient, error) {
 			}
 			return dialer.DialContext(ctx, network, addr)
 		},
+		TLSClientConfig: tlsConfig,
 	}
 
 	client := http.Client{

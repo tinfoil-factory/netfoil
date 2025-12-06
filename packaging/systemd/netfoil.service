@@ -13,7 +13,8 @@ Restart=always
 RestartSec=5
 DynamicUser=true
 
-# add --disable-speculation to disable speculative execution
+# Add --disable-speculation to disable speculative execution
+# Cloudflare DNS on Fedora --pin-certificate-authority /etc/pki/ca-trust/extracted/pem/directory-hash/DigiCert_Global_Root_G2.pem
 ExecStart=/usr/sbin/netfoil --config-directory /etc/netfoil --filter-system-calls
 
 BindReadOnlyPaths=/usr/sbin/netfoil
