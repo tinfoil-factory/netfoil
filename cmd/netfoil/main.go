@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/x509"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -30,6 +31,9 @@ OPTIONS
         --disable-speculation
 			Disable speculative execution (default: false).
 
+        --pin-certificate-authority
+            Path to Certificate Authority to use (default: empty)
+
         --filter-system-calls
             Apply seccomp filter for system calls (default: false, only supported on x86_64).
 
@@ -41,6 +45,12 @@ Example
 
 func main() {
 	options, err := processInput()
+	if err != nil {
+		println(err.Error())
+		os.Exit(1)
+	}
+
+	caCertPool, err := loadCACertPool(options.PinCA)
 	if err != nil {
 		println(err.Error())
 		os.Exit(1)
@@ -81,17 +91,35 @@ func main() {
 	}
 
 	// Apply late for a shorter allowlist
-	err = applySystemCallFilter(options.FilterSystemCalls)
+	err = applySystemCallFilter(options.FilterSystemCalls, caCertPool)
 	if err != nil {
 		println(err.Error())
 		os.Exit(1)
 	}
 
-	err = dns.Server(conn, config, policy)
+	err = dns.Server(conn, config, policy, caCertPool)
 	if err != nil {
 		println(err.Error())
 		os.Exit(1)
 	}
+}
+
+func loadCACertPool(path string) (*x509.CertPool, error) {
+	if path == "" {
+		return nil, nil
+	}
+
+	caCert, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("error reading CA certificate: %w", err)
+	}
+
+	caCertPool := x509.NewCertPool()
+	if !caCertPool.AppendCertsFromPEM(caCert) {
+		return nil, fmt.Errorf("error parsing CA certificate")
+	}
+
+	return caCertPool, nil
 }
 
 func disableSpeculation(disable bool) error {
@@ -117,7 +145,7 @@ func disableSpeculation(disable bool) error {
 	return nil
 }
 
-func applySystemCallFilter(filter bool) error {
+func applySystemCallFilter(filter bool, caCertPool *x509.CertPool) error {
 	if filter {
 		// NoNewPrivs must be applied before the seccomp filter
 		_, _, errInt := syscall.AllThreadsSyscall6(syscall.SYS_PRCTL, unix.PR_SET_NO_NEW_PRIVS, uintptr(1), 0, 0, 0, 0)
@@ -150,13 +178,6 @@ func applySystemCallFilter(filter bool) error {
 			unix.SYS_WRITE,
 			unix.SYS_PREAD64,
 
-			// @file-system
-			unix.SYS_FCNTL,
-			unix.SYS_FSTAT,
-			unix.SYS_GETDENTS64,
-			unix.SYS_OPENAT,
-			unix.SYS_READLINKAT,
-
 			// @network-io
 			unix.SYS_CONNECT,
 			unix.SYS_GETPEERNAME,
@@ -188,6 +209,19 @@ func applySystemCallFilter(filter bool) error {
 
 			// @resources
 			//unix.SYS_SETRLIMIT,
+		}
+
+		if caCertPool == nil {
+			additionalAllowedSyscalls := []uint32{
+				// @file-system
+				unix.SYS_FCNTL,
+				unix.SYS_FSTAT,
+				unix.SYS_GETDENTS64,
+				unix.SYS_OPENAT,
+				unix.SYS_READLINKAT,
+			}
+
+			allowedSyscalls = append(allowedSyscalls, additionalAllowedSyscalls...)
 		}
 
 		instructions := make([]bpf.Instruction, 0)
@@ -275,13 +309,14 @@ type Options struct {
 	Port               int
 	ConfigDirectory    string
 	DisableSpeculation bool
+	PinCA              string
 	FilterSystemCalls  bool
 }
 
 func processInput() (*Options, error) {
 	flags := flag.NewFlagSet("all", flag.ExitOnError)
 	var help, h, disableSpeculation, filterSystemCalls bool
-	var configPath, ipString string
+	var configPath, ipString, pinCA string
 	var portInt int
 	flags.BoolVar(&help, "help", false, "")
 	flags.BoolVar(&h, "h", false, "")
@@ -290,6 +325,7 @@ func processInput() (*Options, error) {
 	flags.IntVar(&portInt, "port", 53, "")
 	flags.StringVar(&ipString, "ip", "127.0.0.1", "")
 	flags.StringVar(&configPath, "config-directory", "/etc/netfoil", "")
+	flags.StringVar(&pinCA, "pin-certificate-authority", "", "")
 
 	err := flags.Parse(os.Args[1:])
 	if err != nil || help || h {
@@ -313,6 +349,7 @@ func processInput() (*Options, error) {
 		Port:               portInt,
 		ConfigDirectory:    configPath,
 		DisableSpeculation: disableSpeculation,
+		PinCA:              pinCA,
 	}, nil
 }
 

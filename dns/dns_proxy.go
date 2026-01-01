@@ -1,6 +1,7 @@
 package dns
 
 import (
+	"crypto/x509"
 	"fmt"
 	"log/slog"
 	"net"
@@ -72,8 +73,8 @@ func (t *timedResponse) rewriteTTLs() (result *Response, stillValid bool) {
 	return result, ok
 }
 
-func Server(conn *net.UDPConn, config *Config, policy *Policy) error {
-	dohClient, err := NewDoHClient(config.DoHURL, config.DoHIPs[0])
+func Server(conn *net.UDPConn, config *Config, policy *Policy, caCertPool *x509.CertPool) error {
+	dohClient, err := NewDoHClient(config.DoHURL, config.DoHIPs[0], caCertPool)
 	if err != nil {
 		return err
 	}

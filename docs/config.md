@@ -26,6 +26,13 @@ Disables speculative execution using the Linux system call `prctl`.
  - *Required*: no
  - *Default*: `false`
 
+### --pin-certificate-authority
+Uses the specified file as the Certificate Authority for DoH.
+
+- *Required*: no
+- *Default*: not set
+- *Example*: `/etc/pki/ca-trust/extracted/pem/directory-hash/DigiCert_Global_Root_G2.pem`
+
 ## Config file
 Located in `<CONFIG DIRECTORY>/config`.
 
