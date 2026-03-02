@@ -17,7 +17,7 @@ const label = "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
 var ipv4Null = net.IP{0, 0, 0, 0}
 var ipv6Null = net.IP{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 
-const blockTTL = uint32(300)
+const defaultTTL = uint32(300)
 
 type Policy struct {
 	exactSearchAllow     *suffixtrie.Node
@@ -33,6 +33,7 @@ type Policy struct {
 	blockPunycode        bool
 	pinResponseDomain    bool
 	pinResponseDomainMap map[string]map[string]struct{}
+	pinA                 map[string]net.IP
 }
 
 func NewPolicy(configDirectory string, blockPunycode bool, pinResponseDomain bool) (*Policy, error) {
@@ -191,6 +192,35 @@ func NewPolicy(configDirectory string, blockPunycode bool, pinResponseDomain boo
 		pinResponseDomainMap[sourceDomain] = source
 	}
 
+	pinARaw, err := readConfig(configDirectory, configFilenamePinA)
+	if err != nil {
+		return nil, err
+	}
+
+	pinA := make(map[string]net.IP)
+	for _, r := range pinARaw {
+		parts := strings.Split(r, ":")
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid pin.a format: %s", r)
+		}
+
+		domain := parts[0]
+		netIP, err := netip.ParseAddr(parts[1])
+		if err != nil || !netIP.Is4() {
+			return nil, fmt.Errorf("invalid pin.a ip: %s", r)
+		}
+
+		data := netIP.As4()
+		ip := net.IP{data[0], data[1], data[2], data[3]}
+
+		_, found := pinA[domain]
+		if !found {
+			pinA[domain] = ip
+		} else {
+			return nil, fmt.Errorf("duplicate pin.a domain: %s", domain)
+		}
+	}
+
 	return &Policy{
 		exactSearchAllow:     exactSearchAllow,
 		suffixSearchAllow:    suffixSearchAllow,
@@ -205,6 +235,7 @@ func NewPolicy(configDirectory string, blockPunycode bool, pinResponseDomain boo
 		blockPunycode:        blockPunycode,
 		pinResponseDomain:    pinResponseDomain,
 		pinResponseDomainMap: pinResponseDomainMap,
+		pinA:                 pinA,
 	}, nil
 }
 
@@ -597,7 +628,7 @@ func generateBlockResponse(question Question) *Response {
 					Name:  domain,
 					Type:  recordType,
 					Class: ClassTypeIN,
-					TTL:   blockTTL,
+					TTL:   defaultTTL,
 					IPv4:  ipv4Null,
 					IPv6:  ipv6Null,
 				},
@@ -619,7 +650,7 @@ func generateBlockResponse(question Question) *Response {
 					Name:        domain,
 					Type:        recordType,
 					Class:       ClassTypeIN,
-					TTL:         blockTTL,
+					TTL:         defaultTTL,
 					HTTPSRecord: &record,
 				},
 			},
@@ -627,6 +658,31 @@ func generateBlockResponse(question Question) *Response {
 	} else {
 		// FIXME return null response rather than NODATA
 		response = generateNoDataResponse()
+	}
+
+	return response
+}
+
+func generateAResponse(question *Question, ip net.IP) *Response {
+	domain := question.Name
+	recordType := question.Type
+
+	var response *Response
+	flags := &Flags{
+		RCODE: ResponseCodeNoError,
+	}
+
+	response = &Response{
+		Flags: flags,
+		Answers: []Answer{
+			{
+				Name:  domain,
+				Type:  recordType,
+				Class: ClassTypeIN,
+				TTL:   defaultTTL,
+				IPv4:  ip,
+			},
+		},
 	}
 
 	return response
