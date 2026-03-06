@@ -271,6 +271,18 @@ func (p *Policy) queryIsAllowed(question Question) (bool, []FilterReason) {
 		return false, reasons
 	}
 
+	if question.Type == RecordTypeA && len(p.allowIPv4) == 0 {
+		reason := fmt.Sprintf("block request type: %d, no allowed IPv4", question.Type)
+		reasons = append(reasons, FilterReason(reason))
+		return false, reasons
+	}
+
+	if question.Type == RecordTypeAAAA && len(p.allowIPv6) == 0 {
+		reason := fmt.Sprintf("block request type: %d, no allowed IPv6", question.Type)
+		reasons = append(reasons, FilterReason(reason))
+		return false, reasons
+	}
+
 	domain := question.Name
 
 	allowed, domainReason := p.domainIsAllowed(domain)
