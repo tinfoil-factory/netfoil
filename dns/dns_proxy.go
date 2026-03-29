@@ -29,6 +29,7 @@ type workerResult struct {
 	time            time.Duration
 	cacheHit        bool
 	externalRequest bool
+	pinned          bool
 }
 
 type worker struct {
@@ -126,7 +127,7 @@ func Server(conn *net.UDPConn, config *Config, policy *Policy, caCertPool *x509.
 					fmt.Printf("    %s\n", reason)
 				}
 
-				fmt.Printf("  cache hit: %t, external request: %t\n", result.cacheHit, result.externalRequest)
+				fmt.Printf("  cache hit: %t, external request: %t, pinned: %t\n", result.cacheHit, result.externalRequest, result.pinned)
 				if result.response != nil {
 					fmt.Printf("  response [%d]\n", result.response.Flags.RCODE)
 					for _, answer := range result.response.Answers {
@@ -229,7 +230,7 @@ func (w *worker) start() {
 	go func() {
 		for task := range w.taskQueue {
 			start := time.Now()
-			rawResponse, question, allowed, response, logEvents, filterReasons, cacheHit, externalRequest, err := w.process(&task)
+			rawResponse, question, allowed, response, logEvents, filterReasons, cacheHit, externalRequest, pinned, err := w.process(&task)
 			elapsed := time.Since(start)
 
 			w.resultsChannel <- workerResult{
@@ -244,12 +245,13 @@ func (w *worker) start() {
 				time:            elapsed,
 				cacheHit:        cacheHit,
 				externalRequest: externalRequest,
+				pinned:          pinned,
 			}
 		}
 	}()
 }
 
-func (w *worker) process(workerTask *workerTask) ([]byte, *Question, bool, *Response, []LogEvent, []FilterReason, bool, bool, error) {
+func (w *worker) process(workerTask *workerTask) ([]byte, *Question, bool, *Response, []LogEvent, []FilterReason, bool, bool, bool, error) {
 	var question *Question = nil
 	allowed := false
 	logEvents := make([]LogEvent, 0)
@@ -257,6 +259,7 @@ func (w *worker) process(workerTask *workerTask) ([]byte, *Question, bool, *Resp
 	var response *Response = nil
 	cacheHit := false
 	externalRequest := false
+	pinned := false
 
 	// FIXME check for too large requests
 	responseLength := workerTask.responseLength
@@ -268,7 +271,7 @@ func (w *worker) process(workerTask *workerTask) ([]byte, *Question, bool, *Resp
 
 	request, err := UnmarshalRequest(buf[:responseLength])
 	if err != nil {
-		return nil, question, allowed, response, logEvents, filterReasons, cacheHit, externalRequest, err
+		return nil, question, allowed, response, logEvents, filterReasons, cacheHit, externalRequest, pinned, err
 	}
 
 	question = &request.Questions[0]
@@ -285,16 +288,29 @@ func (w *worker) process(workerTask *workerTask) ([]byte, *Question, bool, *Resp
 		filterReasons = append(filterReasons, filterReason...)
 		if queryAllowed {
 			key := fmt.Sprintf("%s:%d", question.Name, question.Type)
-			timedCandidateResponse, found := w.cache.Get(key)
+
+			found := false
 			var candidateResponse *Response = nil
+			if len(policy.pinA) > 0 && question.Type == RecordTypeA {
+				var ip net.IP = nil
+				ip, found = policy.pinA[question.Name]
+				if found {
+					candidateResponse = generateAResponse(question, ip)
+					pinned = true
+				}
+			}
 
-			if found {
-				cacheHit = true
-				var stillValid bool
-				candidateResponse, stillValid = timedCandidateResponse.rewriteTTLs()
+			if !found {
+				var timedCandidateResponse *timedResponse = nil
+				timedCandidateResponse, found = w.cache.Get(key)
+				if found {
+					cacheHit = true
+					var stillValid bool
+					candidateResponse, stillValid = timedCandidateResponse.rewriteTTLs()
 
-				if !stillValid {
-					found = false
+					if !stillValid {
+						found = false
+					}
 				}
 			}
 
@@ -303,7 +319,7 @@ func (w *worker) process(workerTask *workerTask) ([]byte, *Question, bool, *Resp
 				candidateResponse, err = w.dohClient.DoH(request)
 				if err != nil {
 					// FIXME retries / proper response to client
-					return nil, question, allowed, response, logEvents, filterReasons, cacheHit, externalRequest, err
+					return nil, question, allowed, response, logEvents, filterReasons, cacheHit, externalRequest, pinned, err
 				}
 
 				w.cache.Set(key, &timedResponse{
@@ -351,8 +367,8 @@ func (w *worker) process(workerTask *workerTask) ([]byte, *Question, bool, *Resp
 
 	d, err := MarshalResponse(request, response)
 	if err != nil {
-		return nil, question, allowed, response, logEvents, filterReasons, cacheHit, externalRequest, err
+		return nil, question, allowed, response, logEvents, filterReasons, cacheHit, externalRequest, pinned, err
 	}
 
-	return d, question, allowed, response, logEvents, filterReasons, cacheHit, externalRequest, nil
+	return d, question, allowed, response, logEvents, filterReasons, cacheHit, externalRequest, pinned, nil
 }

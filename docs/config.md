@@ -146,6 +146,11 @@ List of allowed CNAME request/response pairs.
 
 Example: `example.com:cdn.example.com`
 
+### pin.a
+List of pinned A records.
+
+Example: `example.com:1.2.3.4`
+
 ### known-reserved.ipv4
 List of known reserved IPv4 ranges. These are currently only here to be copy/pasted into `allow.ipv4` and `deny.ipv4`.
 

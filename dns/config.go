@@ -24,6 +24,7 @@ const (
 	configFilenameIPv6Deny          = "deny.ipv6"
 	configFilenameKnownTLDs         = "known.tld"
 	configFilenamePinResponseDomain = "pin.response-domain"
+	configFilenamePinA              = "pin.a"
 
 	defaultMinTTL uint32 = 0
 	defaultMaxTTL uint32 = math.MaxUint32
