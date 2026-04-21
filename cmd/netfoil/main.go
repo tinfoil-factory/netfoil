@@ -350,6 +350,7 @@ func processInput() (*Options, error) {
 		ConfigDirectory:    configPath,
 		DisableSpeculation: disableSpeculation,
 		PinCA:              pinCA,
+		FilterSystemCalls:  filterSystemCalls,
 	}, nil
 }
 
