@@ -22,6 +22,18 @@ func TestExact(t *testing.T) {
 		t.Errorf("should match")
 	}
 
+	if s.MatchExact([]byte("org")) {
+		t.Errorf("should not match")
+	}
+
+	if s.MatchExact([]byte("aorg")) {
+		t.Errorf("should not match")
+	}
+
+	if s.MatchExact([]byte("a.org")) {
+		t.Errorf("should not match")
+	}
+
 	if s.MatchExact([]byte("example.com")) {
 		t.Errorf("should not match")
 	}
@@ -47,11 +59,11 @@ func TestSuffix(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !s.MatchSuffix([]byte("")) {
-		t.Errorf("should match empty string")
+	if s.MatchSuffix([]byte("")) {
+		t.Errorf("should not match empty string")
 	}
 
-	if s.MatchSuffix([]byte("com")) {
+	if s.MatchSuffix([]byte(".org")) {
 		t.Errorf("should not match")
 	}
 
@@ -59,12 +71,32 @@ func TestSuffix(t *testing.T) {
 		t.Errorf("should not match")
 	}
 
-	if !s.MatchSuffix([]byte(".com")) {
-		t.Errorf("should match")
+	if s.MatchSuffix([]byte("rg")) {
+		t.Errorf("should not match")
 	}
 
-	if !s.MatchSuffix([]byte(".org")) {
-		t.Errorf("should match")
+	if s.MatchSuffix([]byte("g")) {
+		t.Errorf("should not match")
+	}
+
+	if s.MatchSuffix([]byte("aorg")) {
+		t.Errorf("should not match")
+	}
+
+	if s.MatchSuffix([]byte(".com")) {
+		t.Errorf("should not match")
+	}
+
+	if s.MatchSuffix([]byte("com")) {
+		t.Errorf("should not match")
+	}
+
+	if s.MatchSuffix([]byte("om")) {
+		t.Errorf("should not match")
+	}
+
+	if s.MatchSuffix([]byte("m")) {
+		t.Errorf("should not match")
 	}
 
 	if !s.MatchSuffix([]byte("example.com")) {
@@ -75,11 +107,7 @@ func TestSuffix(t *testing.T) {
 		t.Errorf("should match")
 	}
 
-	if s.MatchSuffix([]byte("om")) {
-		t.Errorf("should not match")
-	}
-
-	if s.MatchSuffix([]byte("rg")) {
+	if s.MatchSuffix([]byte("example.orga")) {
 		t.Errorf("should not match")
 	}
 }

@@ -24,7 +24,7 @@ func (st *Node) Insert(word []byte) error {
 	}
 
 	current := st
-	for i := len(word) - 1; i > 0; i-- {
+	for i := len(word) - 1; i >= 0; i-- {
 		c := word[i]
 		if c > 127 {
 			return fmt.Errorf("invalid character: %d", c)
@@ -48,7 +48,7 @@ func (st *Node) MatchExact(word []byte) bool {
 	}
 
 	current := st
-	for i := len(word) - 1; i > 0; i-- {
+	for i := len(word) - 1; i >= 0; i-- {
 		c := word[i]
 		if c > 127 {
 			return false
@@ -65,7 +65,7 @@ func (st *Node) MatchExact(word []byte) bool {
 
 func (st *Node) MatchSuffix(word []byte) bool {
 	if len(word) == 0 {
-		return true
+		return false
 	}
 
 	current := st

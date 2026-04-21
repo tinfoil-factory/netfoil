@@ -17,7 +17,15 @@ func TestSuffixes(t *testing.T) {
 		t.Errorf("fail")
 	}
 
+	if suffixAllowList.MatchSuffix([]byte(".google.com")) {
+		t.Errorf("fail")
+	}
+
 	if suffixAllowList.MatchSuffix([]byte("google.com")) {
+		t.Errorf("fail")
+	}
+
+	if suffixAllowList.MatchSuffix([]byte("")) {
 		t.Errorf("fail")
 	}
 }
@@ -31,6 +39,22 @@ func TestDomain(t *testing.T) {
 	}
 
 	if !domainAllowList.MatchExact([]byte("google.com")) {
+		t.Errorf("fail")
+	}
+
+	if domainAllowList.MatchExact([]byte("agoogle.com")) {
+		t.Errorf("fail")
+	}
+
+	if domainAllowList.MatchExact([]byte("ooogle.com")) {
+		t.Errorf("fail")
+	}
+
+	if domainAllowList.MatchExact([]byte("oogle.com")) {
+		t.Errorf("fail")
+	}
+
+	if domainAllowList.MatchExact([]byte("")) {
 		t.Errorf("fail")
 	}
 }
