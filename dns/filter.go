@@ -304,7 +304,8 @@ type DomainPair struct {
 }
 
 func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, response *Response) (bool, []FilterReason) {
-	domains := make([]DomainPair, 0)
+	domainPairs := make([]DomainPair, 0)
+	ipDomains := make([]string, 0)
 	ipv4s := make(map[string]struct{})
 	ipv6s := make(map[string]struct{})
 
@@ -325,6 +326,7 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 			}
 
 			ipv4s[answer.IPv4.String()] = struct{}{}
+			ipDomains = append(ipDomains, answer.Name)
 		}
 
 		if answer.Type == RecordTypeCNAME {
@@ -334,7 +336,7 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 				return false, reasons
 			}
 
-			domains = append(domains, DomainPair{
+			domainPairs = append(domainPairs, DomainPair{
 				SourceDomain:      answer.Name,
 				DestinationDomain: answer.CNAME,
 			})
@@ -348,12 +350,13 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 			}
 
 			ipv6s[answer.IPv6.String()] = struct{}{}
+			ipDomains = append(ipDomains, answer.Name)
 		}
 
 		if answer.Type == RecordTypeHTTPS {
 			record := answer.HTTPSRecord
 			if record.TargetName != "" {
-				domains = append(domains, DomainPair{
+				domainPairs = append(domainPairs, DomainPair{
 					SourceDomain:      questionName,
 					DestinationDomain: record.TargetName,
 				})
@@ -368,7 +371,7 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 			}
 
 			for _, echConfig := range record.ECH {
-				domains = append(domains, DomainPair{
+				domainPairs = append(domainPairs, DomainPair{
 					SourceDomain:      questionName,
 					DestinationDomain: echConfig.PublicName,
 				})
@@ -377,9 +380,13 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 	}
 
 	uniqueDomains := make(map[string]struct{})
-	for _, domain := range domains {
+	for _, domain := range domainPairs {
 		uniqueDomains[domain.SourceDomain] = struct{}{}
 		uniqueDomains[domain.DestinationDomain] = struct{}{}
+	}
+
+	for _, domain := range ipDomains {
+		uniqueDomains[domain] = struct{}{}
 	}
 
 	for domain := range uniqueDomains {
@@ -391,7 +398,7 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 	}
 
 	if p.pinResponseDomain {
-		for _, domain := range domains {
+		for _, domain := range domainPairs {
 			domainAllowed := false
 			source, foundSource := p.pinResponseDomainMap[domain.SourceDomain]
 			if foundSource {
