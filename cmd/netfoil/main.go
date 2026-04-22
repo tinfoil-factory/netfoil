@@ -192,6 +192,7 @@ func applySystemCallFilter(filter bool, caCertPool *x509.CertPool) error {
 			unix.SYS_RT_SIGRETURN,
 			unix.SYS_RT_SIGPROCMASK,
 			unix.SYS_SIGALTSTACK,
+			unix.SYS_RT_SIGACTION,
 
 			// @process
 			unix.SYS_CLONE,
@@ -350,6 +351,7 @@ func processInput() (*Options, error) {
 		ConfigDirectory:    configPath,
 		DisableSpeculation: disableSpeculation,
 		PinCA:              pinCA,
+		FilterSystemCalls:  filterSystemCalls,
 	}, nil
 }
 
