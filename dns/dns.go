@@ -13,7 +13,7 @@ type Request struct {
 	TransactionID uint16
 	Flags         *Flags
 
-	Questions []Question
+	Question Question
 }
 
 type Response struct {

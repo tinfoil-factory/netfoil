@@ -274,11 +274,7 @@ func (w *worker) process(workerTask *workerTask) ([]byte, *Question, bool, *Resp
 		return nil, question, allowed, response, logEvents, filterReasons, cacheHit, externalRequest, pinned, err
 	}
 
-	question = &request.Questions[0]
-	if len(request.Questions) > 1 {
-		l := fmt.Sprintf("more than one domain")
-		logEvents = append(logEvents, LogEvent(l))
-	}
+	question = &request.Question
 
 	logEvents = append(logEvents, LogEvent(fmt.Sprintf("domain: %s", question.Name)))
 	logEvents = append(logEvents, LogEvent(fmt.Sprintf("type: %d", question.Type)))

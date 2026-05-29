@@ -444,10 +444,8 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 }
 
 func supportedRequest(query *Request) bool {
-	for _, question := range query.Questions {
-		if !supportedInRequests(question.Type) {
-			return false
-		}
+	if !supportedInRequests(query.Question.Type) {
+		return false
 	}
 
 	return true

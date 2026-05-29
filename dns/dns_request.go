@@ -2,6 +2,7 @@ package dns
 
 import (
 	"bytes"
+	"fmt"
 )
 
 func UnmarshalRequest(data []byte) (*Request, error) {
@@ -13,38 +14,53 @@ func UnmarshalRequest(data []byte) (*Request, error) {
 		return nil, err
 	}
 
-	flags := UnmarshalFlags(header.Flags)
-
-	questions := make([]Question, 0)
-	for i := 0; i < int(header.NumberOfQuestions); i++ {
-		name, err := readDomain(data, buffer)
-		if err != nil {
-			return nil, err
-		}
-
-		t, err := readType(buffer)
-		if err != nil {
-			return nil, err
-		}
-
-		class, err := readClass(buffer)
-		if err != nil {
-			return nil, err
-		}
-
-		questions = append(questions, Question{
-			Name:  name,
-			Type:  t,
-			Class: class,
-		})
+	if header.NumberOfQuestions != 1 {
+		return nil, fmt.Errorf("expected exactly one question, got %d", header.NumberOfQuestions)
 	}
 
-	// FIXME answer, authorityRRs and additionalRRs
+	if header.NumberOfAnswers != 0 {
+		return nil, fmt.Errorf("expected no answers, got %d", header.NumberOfAnswers)
+	}
+
+	if header.NumberOfAuthorityRRs != 0 {
+		return nil, fmt.Errorf("expected no authority RRs, got %d", header.NumberOfAuthorityRRs)
+	}
+
+	if header.NumberOfAdditionalRRs != 0 {
+		return nil, fmt.Errorf("expected no additional RRs, got %d", header.NumberOfAdditionalRRs)
+	}
+
+	flags := UnmarshalFlags(header.Flags)
+
+	name, err := readDomain(data, buffer)
+	if err != nil {
+		return nil, err
+	}
+
+	t, err := readType(buffer)
+	if err != nil {
+		return nil, err
+	}
+
+	class, err := readClass(buffer)
+	if err != nil {
+		return nil, err
+	}
+
+	question := Question{
+		Name:  name,
+		Type:  t,
+		Class: class,
+	}
+
+	if buffer.Len() != 0 {
+		return nil, fmt.Errorf("unexpected data at the end")
+	}
 
 	return &Request{
 		TransactionID: header.TransactionID,
 		Flags:         flags,
-		Questions:     questions,
+		Question:      question,
 	}, nil
 }
 
@@ -55,7 +71,7 @@ func MarshalRequest(request *Request) ([]byte, error) {
 	header := &Header{
 		TransactionID:         request.TransactionID,
 		Flags:                 flags,
-		NumberOfQuestions:     uint16(len(request.Questions)),
+		NumberOfQuestions:     1,
 		NumberOfAnswers:       0,
 		NumberOfAdditionalRRs: 0,
 		NumberOfAuthorityRRs:  0,
@@ -66,21 +82,19 @@ func MarshalRequest(request *Request) ([]byte, error) {
 		return nil, err
 	}
 
-	for _, question := range request.Questions {
-		err = writeDomain(buffer, question.Name)
-		if err != nil {
-			return nil, err
-		}
+	err = writeDomain(buffer, request.Question.Name)
+	if err != nil {
+		return nil, err
+	}
 
-		err = writeType(buffer, question.Type)
-		if err != nil {
-			return nil, err
-		}
+	err = writeType(buffer, request.Question.Type)
+	if err != nil {
+		return nil, err
+	}
 
-		err = writeClass(buffer, question.Class)
-		if err != nil {
-			return nil, err
-		}
+	err = writeClass(buffer, request.Question.Class)
+	if err != nil {
+		return nil, err
 	}
 
 	return buffer.Bytes(), nil

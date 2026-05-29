@@ -12,7 +12,7 @@ func MarshalResponse(request *Request, response *Response) ([]byte, error) {
 	var rcode ResponseCode
 
 	// FIXME serialize response as is
-	q := request.Questions[0]
+	q := request.Question
 	if q.Type == RecordTypeA {
 		numberOfAnswers = uint16(len(response.Answers))
 		rcode = response.Flags.RCODE
