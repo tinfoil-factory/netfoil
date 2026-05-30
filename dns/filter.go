@@ -477,6 +477,8 @@ func (p *Policy) domainIsAllowed(domain string) (bool, FilterReason) {
 		return false, formatReason
 	}
 
+	domain = strings.TrimSuffix(domain, ".")
+
 	if p.domainMatchesBlockExactly(domain) {
 		reason := fmt.Sprintf("block due to exact blocklist: %s", domain)
 		return false, FilterReason(reason)
@@ -505,11 +507,16 @@ func (p *Policy) domainIsAllowed(domain string) (bool, FilterReason) {
 
 func (p *Policy) domainHasCorrectFormat(domain string) (bool, FilterReason) {
 	// https://www.ietf.org/rfc/rfc1035.txt
-	if len(domain) > 253 {
+	if len(domain) > 254 {
 		reason := fmt.Sprintf("block due to domain being too long: %d", len(domain))
 		return false, FilterReason(reason)
 	}
 
+	if !strings.HasSuffix(domain, ".") {
+		return false, "block due to missing trailing '.'"
+	}
+
+	domain = strings.TrimSuffix(domain, ".")
 	parts := strings.Split(domain, ".")
 	if len(parts) < 2 {
 		reason := fmt.Sprintf("block due to domain not having at least two parts: %s", domain)

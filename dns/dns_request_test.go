@@ -20,8 +20,8 @@ func TestRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if request.Question.Name != "google.com" {
-		t.Errorf("expected question %s, got %s", "google.com", request.Question.Name)
+	if request.Question.Name != "google.com." {
+		t.Errorf("expected question %s, got %s", "google.com.", request.Question.Name)
 	}
 
 	marshalled, err := MarshalRequest(request)

@@ -239,7 +239,7 @@ func writeAnswer(buffer *bytes.Buffer, answer Answer) error {
 }
 
 func writeDomain(buffer *bytes.Buffer, domain string) error {
-	if len(domain) != 0 {
+	if domain != "." {
 		parts := strings.Split(domain, ".")
 		for _, part := range parts {
 			l := byte(len(part))
@@ -257,9 +257,9 @@ func writeDomain(buffer *bytes.Buffer, domain string) error {
 				return fmt.Errorf("invalid length: %d", length)
 			}
 		}
+	} else {
+		buffer.WriteByte(0)
 	}
-
-	buffer.WriteByte(0)
 
 	return nil
 }
@@ -269,6 +269,8 @@ func readDomain(data []byte, buffer *bytes.Buffer) (string, error) {
 	parts := make([]string, 0)
 	visitedOffsets := make(map[uint16]struct{})
 
+	pointerVisited := false
+	totalLength := 0
 	for {
 		targetLength, err := currentBuffer.ReadByte()
 		if err != nil {
@@ -278,6 +280,10 @@ func readDomain(data []byte, buffer *bytes.Buffer) (string, error) {
 		// https://datatracker.ietf.org/doc/html/rfc1035#section-4.1.4
 		pointerIndicator := (int(targetLength) >> 6) & 0b11
 		if pointerIndicator == 3 {
+			if pointerVisited {
+				return "", fmt.Errorf("more than one pointer in name compression")
+			}
+
 			pointerSecondHalf, err := currentBuffer.ReadByte()
 			if err != nil {
 				return "", err
@@ -297,11 +303,17 @@ func readDomain(data []byte, buffer *bytes.Buffer) (string, error) {
 			}
 			currentBuffer = bytes.NewBuffer(data[offset:])
 
+			pointerVisited = true
 			continue
 		}
 
 		if targetLength == 0 {
+			parts = append(parts, "")
 			break
+		}
+
+		if targetLength > 63 {
+			return "", fmt.Errorf("invalid section length: %d", targetLength)
 		}
 
 		section := make([]byte, targetLength)
@@ -314,9 +326,19 @@ func readDomain(data []byte, buffer *bytes.Buffer) (string, error) {
 		}
 
 		parts = append(parts, string(section))
+
+		totalLength += int(targetLength) + 1
+		if totalLength > 254 {
+			return "", fmt.Errorf("domain name too long")
+		}
 	}
 
-	return strings.Join(parts, "."), nil
+	name := "."
+	if len(parts) > 1 {
+		name = strings.Join(parts, ".")
+	}
+
+	return name, nil
 }
 
 func readUncompressedDomain(buffer *bytes.Buffer) (string, error) {
