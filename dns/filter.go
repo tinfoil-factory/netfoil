@@ -400,9 +400,12 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 	if p.pinResponseDomain {
 		for _, domain := range domainPairs {
 			domainAllowed := false
-			source, foundSource := p.pinResponseDomainMap[domain.SourceDomain]
+
+			sourceDomain := strings.TrimSuffix(domain.SourceDomain, ".")
+			source, foundSource := p.pinResponseDomainMap[sourceDomain]
 			if foundSource {
-				_, foundDestination := source[domain.DestinationDomain]
+				destinationDomain := strings.TrimSuffix(domain.DestinationDomain, ".")
+				_, foundDestination := source[destinationDomain]
 				if foundDestination {
 					domainAllowed = true
 				}

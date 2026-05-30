@@ -201,7 +201,7 @@ func writeAnswer(buffer *bytes.Buffer, answer Answer) error {
 		}
 	} else if answer.Type == RecordTypeCNAME {
 		parts := strings.Split(answer.CNAME, ".")
-		s := len(parts) + 1
+		s := len(parts)
 		for _, part := range parts {
 			s += len(part)
 		}
