@@ -269,7 +269,7 @@ func readDomain(data []byte, buffer *bytes.Buffer) (string, error) {
 	parts := make([]string, 0)
 	visitedOffsets := make(map[uint16]struct{})
 
-	pointerVisited := false
+	pointerJustVisited := false
 	totalLength := 0
 	for {
 		targetLength, err := currentBuffer.ReadByte()
@@ -280,8 +280,8 @@ func readDomain(data []byte, buffer *bytes.Buffer) (string, error) {
 		// https://datatracker.ietf.org/doc/html/rfc1035#section-4.1.4
 		pointerIndicator := (int(targetLength) >> 6) & 0b11
 		if pointerIndicator == 3 {
-			if pointerVisited {
-				return "", fmt.Errorf("more than one pointer in name compression")
+			if pointerJustVisited {
+				return "", fmt.Errorf("pointer to pointer in compression")
 			}
 
 			pointerSecondHalf, err := currentBuffer.ReadByte()
@@ -303,8 +303,10 @@ func readDomain(data []byte, buffer *bytes.Buffer) (string, error) {
 			}
 			currentBuffer = bytes.NewBuffer(data[offset:])
 
-			pointerVisited = true
+			pointerJustVisited = true
 			continue
+		} else {
+			pointerJustVisited = false
 		}
 
 		if targetLength == 0 {
