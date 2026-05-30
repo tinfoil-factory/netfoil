@@ -48,7 +48,7 @@ func TestUnexpectedDataAtTheEnd(t *testing.T) {
 
 	expectedError := "unexpected data at the end"
 	if err.Error() != expectedError {
-		t.Errorf("expected error %s, got %s", expectedError, err.Error())
+		t.Errorf("expected error '%s', got '%s'", expectedError, err.Error())
 	}
 }
 
@@ -72,7 +72,7 @@ func TestMultipleQuestions(t *testing.T) {
 
 		expectedError := fmt.Sprintf("expected exactly one question, got %d", n)
 		if err.Error() != expectedError {
-			t.Errorf("expected error %s, got %s", expectedError, err.Error())
+			t.Errorf("expected error '%s', got '%s'", expectedError, err.Error())
 		}
 	}
 }
@@ -96,7 +96,7 @@ func TestNonEmptyAnswers(t *testing.T) {
 
 	expectedError := "expected no answers, got 1"
 	if err.Error() != expectedError {
-		t.Errorf("expected error %s, got %s", expectedError, err.Error())
+		t.Errorf("expected error '%s', got '%s'", expectedError, err.Error())
 	}
 }
 
@@ -119,7 +119,7 @@ func TestNonEmptyAuthorityRR(t *testing.T) {
 
 	expectedError := "expected no authority RRs, got 1"
 	if err.Error() != expectedError {
-		t.Errorf("expected error %s, got %s", expectedError, err.Error())
+		t.Errorf("expected error '%s', got '%s'", expectedError, err.Error())
 	}
 }
 
@@ -142,6 +142,50 @@ func TestNonEmptyAdditionalRR(t *testing.T) {
 
 	expectedError := "expected no additional RRs, got 1"
 	if err.Error() != expectedError {
-		t.Errorf("expected error %s, got %s", expectedError, err.Error())
+		t.Errorf("expected error '%s', got '%s'", expectedError, err.Error())
+	}
+}
+
+type FlagTest struct {
+	Flags         Flags
+	ExpectedError string
+}
+
+func TestSetFlags(t *testing.T) {
+	tests := []FlagTest{
+		{Flags{QR: true}, "expected query, got reply"},
+		{Flags{OPCODE: 1}, "expected standard query, got 1"},
+		{Flags{OPCODE: 15}, "expected standard query, got 15"},
+		{Flags{AA: true}, "unexpected flag AA set"},
+		{Flags{TC: true}, "unexpected flag TC set"},
+		{Flags{RA: true}, "unexpected flag RA set"},
+		{Flags{Z: true}, "unexpected flag Z set"},
+		{Flags{AD: true}, "unexpected flag AD set"},
+		{Flags{CD: true}, "unexpected flag CD set"},
+		{Flags{RCODE: 1}, "unexpected non-zero RCODE 1"},
+		{Flags{RCODE: 15}, "unexpected non-zero RCODE 15"},
+	}
+
+	for _, test := range tests {
+		buffer := bytes.NewBuffer(nil)
+
+		err := writeHeader(buffer, &Header{
+			NumberOfQuestions: 1,
+			Flags:             MarshalFlags(&test.Flags),
+		})
+
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = UnmarshalRequest(buffer.Bytes())
+		if err == nil {
+			t.Errorf("expected error '%s', got none", test.ExpectedError)
+			continue
+		}
+
+		if err.Error() != test.ExpectedError {
+			t.Errorf("expected error '%s', got '%s'", test.ExpectedError, err.Error())
+		}
 	}
 }

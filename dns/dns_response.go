@@ -36,7 +36,9 @@ func MarshalResponse(request *Request, response *Response) ([]byte, error) {
 		TC:    response.Flags.TC,
 		RD:    request.Flags.RD,
 		RA:    response.Flags.RA,
-		Z:     0,
+		Z:     false,
+		AD:    response.Flags.AD,
+		CD:    false,
 		RCODE: rcode,
 	}
 

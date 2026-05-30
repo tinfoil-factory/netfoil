@@ -93,7 +93,9 @@ type Flags struct {
 	TC     bool
 	RD     bool
 	RA     bool
-	Z      byte
+	Z      bool
+	AD     bool
+	CD     bool
 	RCODE  ResponseCode
 }
 
@@ -104,7 +106,9 @@ func UnmarshalFlags(data uint16) *Flags {
 	tc := (data >> 9) & 0b1
 	rd := (data >> 8) & 0b1
 	ra := (data >> 7) & 0b1
-	z := (data >> 4) & 0b111
+	z := (data >> 6) & 0b1
+	ad := (data >> 5) & 0b1
+	cd := (data >> 4) & 0b1
 	rcode := data & 0b1111
 
 	return &Flags{
@@ -114,7 +118,9 @@ func UnmarshalFlags(data uint16) *Flags {
 		TC:     tc == 1,
 		RD:     rd == 1,
 		RA:     ra == 1,
-		Z:      byte(z),
+		Z:      z == 1,
+		AD:     ad == 1,
+		CD:     cd == 1,
 		RCODE:  ResponseCode(rcode),
 	}
 }
@@ -128,7 +134,9 @@ func MarshalFlags(flags *Flags) uint16 {
 	result |= boolToUint16(flags.TC) << 9
 	result |= boolToUint16(flags.RD) << 8
 	result |= boolToUint16(flags.RA) << 7
-	result |= uint16(flags.Z) << 4
+	result |= boolToUint16(flags.Z) << 6
+	result |= boolToUint16(flags.AD) << 5
+	result |= boolToUint16(flags.CD) << 4
 	result |= uint16(flags.RCODE)
 
 	return result

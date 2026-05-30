@@ -32,6 +32,44 @@ func UnmarshalRequest(data []byte) (*Request, error) {
 
 	flags := UnmarshalFlags(header.Flags)
 
+	if flags.QR == true {
+		return nil, fmt.Errorf("expected query, got reply")
+	}
+
+	if flags.OPCODE != 0 {
+		return nil, fmt.Errorf("expected standard query, got %d", flags.OPCODE)
+	}
+
+	if flags.AA == true {
+		return nil, fmt.Errorf("unexpected flag AA set")
+	}
+
+	if flags.TC == true {
+		return nil, fmt.Errorf("unexpected flag TC set")
+	}
+
+	// RD can be set or not set
+
+	if flags.RA == true {
+		return nil, fmt.Errorf("unexpected flag RA set")
+	}
+
+	if flags.Z == true {
+		return nil, fmt.Errorf("unexpected flag Z set")
+	}
+
+	if flags.AD == true {
+		return nil, fmt.Errorf("unexpected flag AD set")
+	}
+
+	if flags.CD == true {
+		return nil, fmt.Errorf("unexpected flag CD set")
+	}
+
+	if flags.RCODE != 0 {
+		return nil, fmt.Errorf("unexpected non-zero RCODE %d", flags.RCODE)
+	}
+
 	name, err := readDomain(data, buffer)
 	if err != nil {
 		return nil, err
