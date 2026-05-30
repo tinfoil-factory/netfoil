@@ -171,7 +171,7 @@ func TestSetFlags(t *testing.T) {
 
 		err := writeHeader(buffer, &Header{
 			NumberOfQuestions: 1,
-			Flags:             MarshalFlags(&test.Flags),
+			Flags:             MarshalFlags(test.Flags),
 		})
 
 		if err != nil {

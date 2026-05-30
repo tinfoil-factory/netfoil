@@ -42,7 +42,7 @@ func MarshalResponse(request *Request, response *Response) ([]byte, error) {
 		RCODE: rcode,
 	}
 
-	packedFlags := MarshalFlags(&f)
+	packedFlags := MarshalFlags(f)
 
 	header := &Header{
 		TransactionID:         request.TransactionID,
@@ -165,7 +165,7 @@ func UnmarshalResponse(data []byte) (*Response, error) {
 			if err != nil {
 				return nil, err
 			}
-			a.HTTPSRecord = r
+			a.HTTPSRecord = *r
 		case RecordTypeCNAME:
 			pb := bytes.NewBuffer(rawData)
 			domain, err := readDomain(data, pb)

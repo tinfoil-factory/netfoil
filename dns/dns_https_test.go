@@ -55,7 +55,7 @@ func TestHTTPS(t *testing.T) {
 		t.Fatalf("ip does not match, expected '%s', got %s", expectedIPv6, actualIPv6)
 	}
 
-	marshalledData, err := marshalHTTPSRecord(record)
+	marshalledData, err := marshalHTTPSRecord(*record)
 	if err != nil {
 		t.Fatal(err)
 	}

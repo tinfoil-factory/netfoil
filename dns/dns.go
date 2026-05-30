@@ -11,13 +11,13 @@ import (
 
 type Request struct {
 	TransactionID uint16
-	Flags         *Flags
+	Flags         Flags
 
 	Question Question
 }
 
 type Response struct {
-	Flags *Flags
+	Flags Flags
 
 	Questions []Question
 	Answers   []Answer
@@ -37,7 +37,7 @@ type Answer struct {
 
 	IPv4        net.IP
 	IPv6        net.IP
-	HTTPSRecord *HTTPSRecord
+	HTTPSRecord HTTPSRecord
 	CNAME       string
 }
 type RecordType uint16
@@ -99,7 +99,7 @@ type Flags struct {
 	RCODE  ResponseCode
 }
 
-func UnmarshalFlags(data uint16) *Flags {
+func UnmarshalFlags(data uint16) Flags {
 	qr := (data >> 15) & 0b1
 	opcode := (data >> 11) & 0b1111
 	aa := (data >> 10) & 0b1
@@ -111,7 +111,7 @@ func UnmarshalFlags(data uint16) *Flags {
 	cd := (data >> 4) & 0b1
 	rcode := data & 0b1111
 
-	return &Flags{
+	return Flags{
 		QR:     qr == 1,
 		OPCODE: byte(opcode),
 		AA:     aa == 1,
@@ -125,7 +125,7 @@ func UnmarshalFlags(data uint16) *Flags {
 	}
 }
 
-func MarshalFlags(flags *Flags) uint16 {
+func MarshalFlags(flags Flags) uint16 {
 	var result uint16 = 0
 
 	result |= boolToUint16(flags.QR) << 15

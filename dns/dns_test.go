@@ -43,10 +43,10 @@ func TestFlagsAllSet(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		marshalled := MarshalFlags(&test)
+		marshalled := MarshalFlags(test)
 		unmarshalled := UnmarshalFlags(marshalled)
 
-		if !flagEquals(test, *unmarshalled) {
+		if !flagEquals(test, unmarshalled) {
 			t.Errorf("flag marshal/unmarshal failed for %v", test)
 		}
 	}

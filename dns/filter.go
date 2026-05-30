@@ -633,7 +633,7 @@ func generateBlockResponse(question Question) *Response {
 	recordType := question.Type
 
 	var response *Response
-	flags := &Flags{
+	flags := Flags{
 		RCODE: ResponseCodeNoError,
 	}
 
@@ -668,7 +668,7 @@ func generateBlockResponse(question Question) *Response {
 					Type:        recordType,
 					Class:       ClassTypeIN,
 					TTL:         defaultTTL,
-					HTTPSRecord: &record,
+					HTTPSRecord: record,
 				},
 			},
 		}
@@ -685,7 +685,7 @@ func generateAResponse(question *Question, ip net.IP) *Response {
 	recordType := question.Type
 
 	var response *Response
-	flags := &Flags{
+	flags := Flags{
 		RCODE: ResponseCodeNoError,
 	}
 
@@ -706,7 +706,7 @@ func generateAResponse(question *Question, ip net.IP) *Response {
 }
 
 func generateNoDataResponse() *Response {
-	flags := &Flags{
+	flags := Flags{
 		RCODE: ResponseCodeNoError,
 	}
 	return &Response{
@@ -716,7 +716,7 @@ func generateNoDataResponse() *Response {
 }
 
 func generateNotImplementedResponse() *Response {
-	flags := &Flags{
+	flags := Flags{
 		RCODE: ResponseCodeNotImp,
 	}
 	return &Response{
