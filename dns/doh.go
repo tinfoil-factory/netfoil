@@ -47,7 +47,7 @@ func (c *DoHClient) DoH(request *Request) (*Response, error) {
 		return nil, fmt.Errorf("DNS query failed: %s", resp.Status)
 	}
 
-	limitedBody := io.LimitReader(resp.Body, 1000000)
+	limitedBody := io.LimitReader(resp.Body, 65536)
 	body, err := io.ReadAll(limitedBody)
 	if err != nil {
 		return nil, err
