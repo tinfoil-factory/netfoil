@@ -373,7 +373,7 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 			for _, echConfig := range record.ECH {
 				domainPairs = append(domainPairs, DomainPair{
 					SourceDomain:      questionName,
-					DestinationDomain: echConfig.PublicName,
+					DestinationDomain: echConfig.PublicName + ".",
 				})
 			}
 		}
@@ -402,9 +402,10 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 			domainAllowed := false
 
 			sourceDomain := strings.TrimSuffix(domain.SourceDomain, ".")
+			destinationDomain := strings.TrimSuffix(domain.DestinationDomain, ".")
+
 			source, foundSource := p.pinResponseDomainMap[sourceDomain]
 			if foundSource {
-				destinationDomain := strings.TrimSuffix(domain.DestinationDomain, ".")
 				_, foundDestination := source[destinationDomain]
 				if foundDestination {
 					domainAllowed = true
@@ -412,7 +413,7 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 			}
 
 			if !domainAllowed {
-				reason := fmt.Sprintf("block due to response domain: %s:%s", domain.SourceDomain, domain.DestinationDomain)
+				reason := fmt.Sprintf("block due to response domain: %s:%s", sourceDomain, destinationDomain)
 				reasons = append(reasons, FilterReason(reason))
 				return false, reasons
 			}
