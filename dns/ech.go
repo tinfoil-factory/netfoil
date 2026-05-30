@@ -50,6 +50,10 @@ func UnmarshalECHConfig(data []byte) ([]ECHConfig, error) {
 			return nil, err
 		}
 
+		if buffer.Len() < int(length) {
+			return nil, errors.New("ECH length larger than buffer")
+		}
+
 		innerBuffer := bytes.NewBuffer(buffer.Bytes()[:length])
 		buffer = bytes.NewBuffer(buffer.Bytes()[length:])
 
