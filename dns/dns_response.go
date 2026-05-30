@@ -155,9 +155,17 @@ func UnmarshalResponse(data []byte) (*Response, error) {
 
 		switch t {
 		case RecordTypeA:
+			if len(rawData) != 4 {
+				return nil, fmt.Errorf("invalid IPv4 length in length")
+			}
+
 			ip := net.IPv4(rawData[0], rawData[1], rawData[2], rawData[3])
 			a.IPv4 = ip.To4()
 		case RecordTypeAAAA:
+			if len(rawData) != 16 {
+				return nil, fmt.Errorf("invalid IPv6 length in response")
+			}
+
 			ip := net.IP(rawData)
 			a.IPv6 = ip
 		case RecordTypeHTTPS:
