@@ -9,6 +9,10 @@ import (
 	"strings"
 )
 
+const (
+	UINT16_MAX = 65535
+)
+
 type Request struct {
 	TransactionID uint16
 	Flags         Flags
@@ -388,7 +392,7 @@ func writeArray8(buffer *bytes.Buffer, value []byte) error {
 
 func writeArray16(buffer *bytes.Buffer, value []byte) error {
 	candidateLength := len(value)
-	if candidateLength > 65536 {
+	if candidateLength > UINT16_MAX {
 		return fmt.Errorf("length larger than 2 bytes: %d", candidateLength)
 	}
 
