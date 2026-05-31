@@ -319,7 +319,8 @@ func (w *worker) process(workerTask *workerTask) ([]byte, *Question, bool, *Resp
 				}
 
 				// TODO responses without at TTL will not be evicted from the cache, so not caching it for now
-				if len(candidateResponse.Answers) > 0 {
+				// TODO decide what to do with large responses
+				if len(candidateResponse.Answers) > 0 && len(candidateResponse.Answers) < 1000 {
 					for _, answer := range candidateResponse.Answers {
 						if answer.TTL > w.config.MaxTTL {
 							answer.TTL = w.config.MaxTTL
