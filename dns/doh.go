@@ -49,8 +49,13 @@ func (c *DoHClient) DoH(request *Request) (*Response, error) {
 
 	limitedBody := io.LimitReader(resp.Body, UINT16_MAX)
 	body, err := io.ReadAll(limitedBody)
-	if err != nil {
-		return nil, err
+	closeErr := resp.Body.Close()
+	if err != nil || closeErr != nil {
+		if err == nil || closeErr == nil {
+			return nil, err
+		}
+
+		return nil, fmt.Errorf("failed to read and close %w %w", err, closeErr)
 	}
 
 	response, err := UnmarshalResponse(body)
