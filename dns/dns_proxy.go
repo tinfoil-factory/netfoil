@@ -318,21 +318,24 @@ func (w *worker) process(workerTask *workerTask) ([]byte, *Question, bool, *Resp
 					return nil, question, allowed, response, logEvents, filterReasons, cacheHit, externalRequest, pinned, err
 				}
 
-				for _, answer := range candidateResponse.Answers {
-					if answer.TTL > w.config.MaxTTL {
-						answer.TTL = w.config.MaxTTL
+				// TODO responses without at TTL will not be evicted from the cache, so not caching it for now
+				if len(candidateResponse.Answers) > 0 {
+					for _, answer := range candidateResponse.Answers {
+						if answer.TTL > w.config.MaxTTL {
+							answer.TTL = w.config.MaxTTL
+						}
 					}
-				}
 
-				w.cache.Set(key, &timedResponse{
-					time:     time.Now(),
-					response: candidateResponse,
-				})
+					w.cache.Set(key, &timedResponse{
+						time:     time.Now(),
+						response: candidateResponse,
+					})
 
-				candidateResponse = &Response{
-					Flags:     candidateResponse.Flags,
-					Questions: slices.Clone(candidateResponse.Questions),
-					Answers:   slices.Clone(candidateResponse.Answers),
+					candidateResponse = &Response{
+						Flags:     candidateResponse.Flags,
+						Questions: slices.Clone(candidateResponse.Questions),
+						Answers:   slices.Clone(candidateResponse.Answers),
+					}
 				}
 			}
 
