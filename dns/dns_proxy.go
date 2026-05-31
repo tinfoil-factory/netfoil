@@ -289,7 +289,8 @@ func (w *worker) process(workerTask *workerTask) ([]byte, *Question, bool, *Resp
 			var candidateResponse *Response = nil
 			if len(policy.pinA) > 0 && question.Type == RecordTypeA {
 				var ip net.IP = nil
-				ip, found = policy.pinA[question.Name]
+				questionName := strings.TrimSuffix(question.Name, ".")
+				ip, found = policy.pinA[questionName]
 				if found {
 					candidateResponse = generateAResponse(question, ip)
 					pinned = true
