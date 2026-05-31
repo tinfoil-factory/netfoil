@@ -348,6 +348,12 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 		}
 
 		if answer.Type == RecordTypeHTTPS {
+			if requestType != RecordTypeHTTPS {
+				reason := fmt.Sprintf("block due to HTTPS response not matching request type 65: %d", answer.Type)
+				reasons = append(reasons, FilterReason(reason))
+				return false, reasons
+			}
+
 			record := answer.HTTPSRecord
 			if record.TargetName != "" {
 				domainPairs = append(domainPairs, DomainPair{
