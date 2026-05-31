@@ -44,6 +44,11 @@ func (c *DoHClient) DoH(request *Request) (*Response, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		closeErr := resp.Body.Close()
+		if closeErr != nil {
+			return nil, fmt.Errorf("DNS query failed: %s, close failed %w", resp.Status, closeErr)
+		}
+
 		return nil, fmt.Errorf("DNS query failed: %s", resp.Status)
 	}
 
