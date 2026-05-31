@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"slices"
 	"strings"
 	"time"
 
@@ -56,20 +57,18 @@ func (t *timedResponse) rewriteTTLs() (result *Response, stillValid bool) {
 
 	result = &Response{
 		Flags:     t.response.Flags,
-		Questions: t.response.Questions,
+		Questions: slices.Clone(t.response.Questions),
+		Answers:   slices.Clone(t.response.Answers),
 	}
 
-	answers := make([]Answer, 0)
-	for _, a := range t.response.Answers {
+	for _, a := range result.Answers {
 		if a.TTL >= diffSeconds {
 			a.TTL = a.TTL - diffSeconds
 		} else {
 			ok = false
 			a.TTL = 0
 		}
-		answers = append(answers, a)
 	}
-	result.Answers = answers
 
 	return result, ok
 }
@@ -274,11 +273,7 @@ func (w *worker) process(workerTask *workerTask) ([]byte, *Question, bool, *Resp
 		return nil, question, allowed, response, logEvents, filterReasons, cacheHit, externalRequest, pinned, err
 	}
 
-	question = &request.Questions[0]
-	if len(request.Questions) > 1 {
-		l := fmt.Sprintf("more than one domain")
-		logEvents = append(logEvents, LogEvent(l))
-	}
+	question = &request.Question
 
 	logEvents = append(logEvents, LogEvent(fmt.Sprintf("domain: %s", question.Name)))
 	logEvents = append(logEvents, LogEvent(fmt.Sprintf("type: %d", question.Type)))
@@ -293,7 +288,8 @@ func (w *worker) process(workerTask *workerTask) ([]byte, *Question, bool, *Resp
 			var candidateResponse *Response = nil
 			if len(policy.pinA) > 0 && question.Type == RecordTypeA {
 				var ip net.IP = nil
-				ip, found = policy.pinA[question.Name]
+				questionName := strings.TrimSuffix(question.Name, ".")
+				ip, found = policy.pinA[questionName]
 				if found {
 					candidateResponse = generateAResponse(question, ip)
 					pinned = true
@@ -322,10 +318,26 @@ func (w *worker) process(workerTask *workerTask) ([]byte, *Question, bool, *Resp
 					return nil, question, allowed, response, logEvents, filterReasons, cacheHit, externalRequest, pinned, err
 				}
 
-				w.cache.Set(key, &timedResponse{
-					time:     time.Now(),
-					response: candidateResponse,
-				})
+				// TODO responses without at TTL will not be evicted from the cache, so not caching it for now
+				// TODO decide what to do with large responses
+				if len(candidateResponse.Answers) > 0 && len(candidateResponse.Answers) < 1000 {
+					for _, answer := range candidateResponse.Answers {
+						if answer.TTL > w.config.MaxTTL {
+							answer.TTL = w.config.MaxTTL
+						}
+					}
+
+					w.cache.Set(key, &timedResponse{
+						time:     time.Now(),
+						response: candidateResponse,
+					})
+
+					candidateResponse = &Response{
+						Flags:     candidateResponse.Flags,
+						Questions: slices.Clone(candidateResponse.Questions),
+						Answers:   slices.Clone(candidateResponse.Answers),
+					}
+				}
 			}
 
 			responseAllowed, filterReason := policy.responseIsAllowed(question.Name, question.Type, candidateResponse)

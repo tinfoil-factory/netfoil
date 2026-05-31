@@ -9,15 +9,19 @@ import (
 	"strings"
 )
 
+const (
+	UINT16_MAX = 65535
+)
+
 type Request struct {
 	TransactionID uint16
-	Flags         *Flags
+	Flags         Flags
 
-	Questions []Question
+	Question Question
 }
 
 type Response struct {
-	Flags *Flags
+	Flags Flags
 
 	Questions []Question
 	Answers   []Answer
@@ -37,7 +41,7 @@ type Answer struct {
 
 	IPv4        net.IP
 	IPv6        net.IP
-	HTTPSRecord *HTTPSRecord
+	HTTPSRecord HTTPSRecord
 	CNAME       string
 }
 type RecordType uint16
@@ -93,33 +97,39 @@ type Flags struct {
 	TC     bool
 	RD     bool
 	RA     bool
-	Z      byte
+	Z      bool
+	AD     bool
+	CD     bool
 	RCODE  ResponseCode
 }
 
-func UnmarshalFlags(data uint16) *Flags {
+func UnmarshalFlags(data uint16) Flags {
 	qr := (data >> 15) & 0b1
 	opcode := (data >> 11) & 0b1111
 	aa := (data >> 10) & 0b1
 	tc := (data >> 9) & 0b1
 	rd := (data >> 8) & 0b1
 	ra := (data >> 7) & 0b1
-	z := (data >> 4) & 0b111
+	z := (data >> 6) & 0b1
+	ad := (data >> 5) & 0b1
+	cd := (data >> 4) & 0b1
 	rcode := data & 0b1111
 
-	return &Flags{
+	return Flags{
 		QR:     qr == 1,
 		OPCODE: byte(opcode),
 		AA:     aa == 1,
 		TC:     tc == 1,
 		RD:     rd == 1,
 		RA:     ra == 1,
-		Z:      byte(z),
+		Z:      z == 1,
+		AD:     ad == 1,
+		CD:     cd == 1,
 		RCODE:  ResponseCode(rcode),
 	}
 }
 
-func MarshalFlags(flags *Flags) uint16 {
+func MarshalFlags(flags Flags) uint16 {
 	var result uint16 = 0
 
 	result |= boolToUint16(flags.QR) << 15
@@ -128,7 +138,9 @@ func MarshalFlags(flags *Flags) uint16 {
 	result |= boolToUint16(flags.TC) << 9
 	result |= boolToUint16(flags.RD) << 8
 	result |= boolToUint16(flags.RA) << 7
-	result |= uint16(flags.Z) << 4
+	result |= boolToUint16(flags.Z) << 6
+	result |= boolToUint16(flags.AD) << 5
+	result |= boolToUint16(flags.CD) << 4
 	result |= uint16(flags.RCODE)
 
 	return result
@@ -189,7 +201,7 @@ func writeAnswer(buffer *bytes.Buffer, answer Answer) error {
 		}
 	} else if answer.Type == RecordTypeCNAME {
 		parts := strings.Split(answer.CNAME, ".")
-		s := len(parts) + 1
+		s := len(parts)
 		for _, part := range parts {
 			s += len(part)
 		}
@@ -227,7 +239,7 @@ func writeAnswer(buffer *bytes.Buffer, answer Answer) error {
 }
 
 func writeDomain(buffer *bytes.Buffer, domain string) error {
-	if len(domain) != 0 {
+	if domain != "." {
 		parts := strings.Split(domain, ".")
 		for _, part := range parts {
 			l := byte(len(part))
@@ -245,9 +257,9 @@ func writeDomain(buffer *bytes.Buffer, domain string) error {
 				return fmt.Errorf("invalid length: %d", length)
 			}
 		}
+	} else {
+		buffer.WriteByte(0)
 	}
-
-	buffer.WriteByte(0)
 
 	return nil
 }
@@ -257,6 +269,8 @@ func readDomain(data []byte, buffer *bytes.Buffer) (string, error) {
 	parts := make([]string, 0)
 	visitedOffsets := make(map[uint16]struct{})
 
+	pointerJustVisited := false
+	totalLength := 0
 	for {
 		targetLength, err := currentBuffer.ReadByte()
 		if err != nil {
@@ -266,6 +280,10 @@ func readDomain(data []byte, buffer *bytes.Buffer) (string, error) {
 		// https://datatracker.ietf.org/doc/html/rfc1035#section-4.1.4
 		pointerIndicator := (int(targetLength) >> 6) & 0b11
 		if pointerIndicator == 3 {
+			if pointerJustVisited {
+				return "", fmt.Errorf("pointer to pointer in compression")
+			}
+
 			pointerSecondHalf, err := currentBuffer.ReadByte()
 			if err != nil {
 				return "", err
@@ -280,13 +298,24 @@ func readDomain(data []byte, buffer *bytes.Buffer) (string, error) {
 
 			visitedOffsets[offset] = struct{}{}
 
+			if int(offset) > len(data) {
+				return "", fmt.Errorf("offset larger than data")
+			}
 			currentBuffer = bytes.NewBuffer(data[offset:])
 
+			pointerJustVisited = true
 			continue
+		} else {
+			pointerJustVisited = false
 		}
 
 		if targetLength == 0 {
+			parts = append(parts, "")
 			break
+		}
+
+		if targetLength > 63 {
+			return "", fmt.Errorf("invalid section length: %d", targetLength)
 		}
 
 		section := make([]byte, targetLength)
@@ -298,10 +327,25 @@ func readDomain(data []byte, buffer *bytes.Buffer) (string, error) {
 			return "", fmt.Errorf("read %d, expected %d", read, targetLength)
 		}
 
-		parts = append(parts, string(section))
+		label := string(section)
+		if !labelRegex.MatchString(label) {
+			return "", fmt.Errorf("illegal characters in label")
+		}
+
+		parts = append(parts, label)
+
+		totalLength += int(targetLength) + 1
+		if totalLength > 254 {
+			return "", fmt.Errorf("domain name too long")
+		}
 	}
 
-	return strings.Join(parts, "."), nil
+	name := "."
+	if len(parts) > 1 {
+		name = strings.Join(parts, ".")
+	}
+
+	return name, nil
 }
 
 func readUncompressedDomain(buffer *bytes.Buffer) (string, error) {
@@ -377,7 +421,7 @@ func writeArray8(buffer *bytes.Buffer, value []byte) error {
 
 func writeArray16(buffer *bytes.Buffer, value []byte) error {
 	candidateLength := len(value)
-	if candidateLength > 65536 {
+	if candidateLength > UINT16_MAX {
 		return fmt.Errorf("length larger than 2 bytes: %d", candidateLength)
 	}
 

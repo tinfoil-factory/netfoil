@@ -50,6 +50,10 @@ func UnmarshalECHConfig(data []byte) ([]ECHConfig, error) {
 			return nil, err
 		}
 
+		if buffer.Len() < int(length) {
+			return nil, errors.New("ECH length larger than buffer")
+		}
+
 		innerBuffer := bytes.NewBuffer(buffer.Bytes()[:length])
 		buffer = bytes.NewBuffer(buffer.Bytes()[length:])
 
@@ -162,7 +166,7 @@ func MarshalECHConfig(echConfig []ECHConfig) ([]byte, error) {
 	}
 
 	outerLength := totalSize
-	if outerLength > 65536 {
+	if outerLength > UINT16_MAX {
 		return nil, fmt.Errorf("ECH outer overflow")
 	}
 
@@ -205,7 +209,7 @@ func marshalInner(echConfig *ECHConfig) ([]byte, error) {
 	}
 
 	suitesLength := len(echConfig.HPKEKeyConfig.HPKESymmetricCipherSuites) * 4
-	if suitesLength > 65536 {
+	if suitesLength > UINT16_MAX {
 		return nil, errors.New("ECH ciphers overflow")
 	}
 
@@ -246,7 +250,7 @@ func marshalInner(echConfig *ECHConfig) ([]byte, error) {
 	}
 
 	innerLength := buffer.Len()
-	if innerLength > 65536 {
+	if innerLength > UINT16_MAX {
 		return nil, fmt.Errorf("ECH inner overflow")
 	}
 

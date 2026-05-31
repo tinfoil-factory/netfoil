@@ -334,7 +334,7 @@ func processInput() (*Options, error) {
 		os.Exit(1)
 	}
 
-	if portInt < 0 || portInt > 65535 {
+	if portInt < 0 || portInt > dns.UINT16_MAX {
 		return nil, fmt.Errorf("invalid port %d", portInt)
 	}
 

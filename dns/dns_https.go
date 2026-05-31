@@ -70,7 +70,7 @@ type HTTPSRecord struct {
 	IPv6Hint   []net.IP
 }
 
-func marshalHTTPSRecord(record *HTTPSRecord) ([]byte, error) {
+func marshalHTTPSRecord(record HTTPSRecord) ([]byte, error) {
 	var responseBuffer [1024]byte
 	rp := bytes.NewBuffer(responseBuffer[:])
 	rp.Reset()

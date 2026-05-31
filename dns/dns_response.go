@@ -12,7 +12,7 @@ func MarshalResponse(request *Request, response *Response) ([]byte, error) {
 	var rcode ResponseCode
 
 	// FIXME serialize response as is
-	q := request.Questions[0]
+	q := request.Question
 	if q.Type == RecordTypeA {
 		numberOfAnswers = uint16(len(response.Answers))
 		rcode = response.Flags.RCODE
@@ -36,11 +36,13 @@ func MarshalResponse(request *Request, response *Response) ([]byte, error) {
 		TC:    response.Flags.TC,
 		RD:    request.Flags.RD,
 		RA:    response.Flags.RA,
-		Z:     0,
+		Z:     false,
+		AD:    false,
+		CD:    false,
 		RCODE: rcode,
 	}
 
-	packedFlags := MarshalFlags(&f)
+	packedFlags := MarshalFlags(f)
 
 	header := &Header{
 		TransactionID:         request.TransactionID,
@@ -153,9 +155,17 @@ func UnmarshalResponse(data []byte) (*Response, error) {
 
 		switch t {
 		case RecordTypeA:
+			if len(rawData) != 4 {
+				return nil, fmt.Errorf("invalid IPv4 length in length")
+			}
+
 			ip := net.IPv4(rawData[0], rawData[1], rawData[2], rawData[3])
 			a.IPv4 = ip.To4()
 		case RecordTypeAAAA:
+			if len(rawData) != 16 {
+				return nil, fmt.Errorf("invalid IPv6 length in response")
+			}
+
 			ip := net.IP(rawData)
 			a.IPv6 = ip
 		case RecordTypeHTTPS:
@@ -163,7 +173,7 @@ func UnmarshalResponse(data []byte) (*Response, error) {
 			if err != nil {
 				return nil, err
 			}
-			a.HTTPSRecord = r
+			a.HTTPSRecord = *r
 		case RecordTypeCNAME:
 			pb := bytes.NewBuffer(rawData)
 			domain, err := readDomain(data, pb)

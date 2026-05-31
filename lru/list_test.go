@@ -99,6 +99,14 @@ func TestRemoveDouble(t *testing.T) {
 	e2 := l.PushBack("b")
 	l.Remove(e1)
 
+	if l.Head().Previous() != nil {
+		t.Error("previous of head should be nil")
+	}
+
+	if l.Tail().Next() != nil {
+		t.Error("next of tail should be nil")
+	}
+
 	if l.Head() != e2 {
 		t.Error("wrong head")
 	}
@@ -113,6 +121,14 @@ func TestRemoveDouble(t *testing.T) {
 
 	e3 := l.PushBack("c")
 	l.Remove(e3)
+
+	if l.Head().Previous() != nil {
+		t.Error("previous of head should be nil")
+	}
+
+	if l.Tail().Next() != nil {
+		t.Error("next of tail should be nil")
+	}
 
 	if l.Head() != e2 {
 		t.Error("wrong head")
