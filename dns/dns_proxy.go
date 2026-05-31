@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"slices"
 	"strings"
 	"time"
 
@@ -56,20 +57,18 @@ func (t *timedResponse) rewriteTTLs() (result *Response, stillValid bool) {
 
 	result = &Response{
 		Flags:     t.response.Flags,
-		Questions: t.response.Questions,
+		Questions: slices.Clone(t.response.Questions),
+		Answers:   slices.Clone(t.response.Answers),
 	}
 
-	answers := make([]Answer, 0)
-	for _, a := range t.response.Answers {
+	for _, a := range result.Answers {
 		if a.TTL >= diffSeconds {
 			a.TTL = a.TTL - diffSeconds
 		} else {
 			ok = false
 			a.TTL = 0
 		}
-		answers = append(answers, a)
 	}
-	result.Answers = answers
 
 	return result, ok
 }
@@ -319,10 +318,22 @@ func (w *worker) process(workerTask *workerTask) ([]byte, *Question, bool, *Resp
 					return nil, question, allowed, response, logEvents, filterReasons, cacheHit, externalRequest, pinned, err
 				}
 
+				for _, answer := range candidateResponse.Answers {
+					if answer.TTL > w.config.MaxTTL {
+						answer.TTL = w.config.MaxTTL
+					}
+				}
+
 				w.cache.Set(key, &timedResponse{
 					time:     time.Now(),
 					response: candidateResponse,
 				})
+
+				candidateResponse = &Response{
+					Flags:     candidateResponse.Flags,
+					Questions: slices.Clone(candidateResponse.Questions),
+					Answers:   slices.Clone(candidateResponse.Answers),
+				}
 			}
 
 			responseAllowed, filterReason := policy.responseIsAllowed(question.Name, question.Type, candidateResponse)
