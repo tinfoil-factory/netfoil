@@ -12,12 +12,13 @@ import (
 
 // https://datatracker.ietf.org/doc/html/rfc921
 // TODO unclear if it is allowed to start with a number
-const label = "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
 
 var ipv4Null = net.IP{0, 0, 0, 0}
 var ipv6Null = net.IP{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 
 const defaultTTL = uint32(300)
+
+var labelRegex = regexp.MustCompile("^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
 
 type Policy struct {
 	exactSearchAllow     *suffixtrie.Node
@@ -25,7 +26,6 @@ type Policy struct {
 	exactSearchBlock     *suffixtrie.Node
 	suffixSearchBlock    *suffixtrie.Node
 	TLDs                 map[string]struct{}
-	labelRegex           *regexp.Regexp
 	blockIPv4            []netip.Prefix
 	blockIPv6            []netip.Prefix
 	allowIPv4            []netip.Prefix
@@ -102,11 +102,6 @@ func NewPolicy(configDirectory string, blockPunycode bool, pinResponseDomain boo
 		}
 
 		TLDs[strings.TrimPrefix(tld, expectedPrefix)] = struct{}{}
-	}
-
-	labelRegex, err := regexp.Compile(label)
-	if err != nil {
-		return nil, err
 	}
 
 	ipv4BlockList, err := readConfig(configDirectory, configFilenameIPv4Deny)
@@ -227,7 +222,6 @@ func NewPolicy(configDirectory string, blockPunycode bool, pinResponseDomain boo
 		exactSearchBlock:     exactSearchBlock,
 		suffixSearchBlock:    suffixSearchBlock,
 		TLDs:                 TLDs,
-		labelRegex:           labelRegex,
 		blockIPv4:            blockIPv4,
 		blockIPv6:            blockIPv6,
 		allowIPv4:            allowIPv4,
@@ -523,18 +517,18 @@ func (p *Policy) domainHasCorrectFormat(domain string) (bool, FilterReason) {
 	domain = strings.TrimSuffix(domain, ".")
 	parts := strings.Split(domain, ".")
 	if len(parts) < 2 {
-		reason := fmt.Sprintf("block due to domain not having at least two parts: %s", domain)
+		reason := fmt.Sprintf("block due to domain not having at least two parts")
 		return false, FilterReason(reason)
 	}
 
 	for _, part := range parts {
 		if len(part) > 63 {
-			reason := fmt.Sprintf("block due to label too long: '%s'", part)
+			reason := fmt.Sprintf("block due to label too long")
 			return false, FilterReason(reason)
 		}
 
-		if !p.labelRegex.Match([]byte(part)) {
-			reason := fmt.Sprintf("block due to invalid label: '%s'", part)
+		if !labelRegex.Match([]byte(part)) {
+			reason := fmt.Sprintf("block due to illegal characters in label")
 			return false, FilterReason(reason)
 		}
 
@@ -543,7 +537,7 @@ func (p *Policy) domainHasCorrectFormat(domain string) (bool, FilterReason) {
 
 		if p.blockPunycode {
 			if strings.HasPrefix(part, "xn--") {
-				reason := fmt.Sprintf("block due to punycode: '%s'", domain)
+				reason := fmt.Sprintf("block due to punycode present")
 				return false, FilterReason(reason)
 			}
 		}

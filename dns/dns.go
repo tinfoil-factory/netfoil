@@ -327,7 +327,12 @@ func readDomain(data []byte, buffer *bytes.Buffer) (string, error) {
 			return "", fmt.Errorf("read %d, expected %d", read, targetLength)
 		}
 
-		parts = append(parts, string(section))
+		label := string(section)
+		if !labelRegex.MatchString(label) {
+			return "", fmt.Errorf("illegal characters in label")
+		}
+
+		parts = append(parts, label)
 
 		totalLength += int(targetLength) + 1
 		if totalLength > 254 {
