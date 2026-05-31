@@ -86,7 +86,9 @@ func (l *List[T]) Remove(e *ListElement[T]) {
 			l.tail = nil
 		}
 
-		l.head.previous = nil
+		if l.head != nil {
+			l.head.previous = nil
+		}
 	} else if l.tail == e {
 		l.tail = l.tail.previous
 
