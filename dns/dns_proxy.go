@@ -105,12 +105,13 @@ func Server(conn *net.UDPConn, config *Config, policy *Policy, caCertPool *x509.
 				continue
 			}
 
+			nameWithoutTrailingDot := strings.TrimSuffix(result.question.Name, ".")
 			if result.allowed && config.LogAllowed {
-				fmt.Printf("allow|%s|%s\n", result.question.Name, result.question.Type.Name())
+				fmt.Printf("allow|%s|%s\n", nameWithoutTrailingDot, result.question.Type.Name())
 			}
 
 			if !result.allowed && config.LogDenied {
-				fmt.Printf("deny|%s|%s\n", result.question.Name, result.question.Type.Name())
+				fmt.Printf("deny|%s|%s\n", nameWithoutTrailingDot, result.question.Type.Name())
 			}
 
 			if config.LogLevel == slog.LevelDebug {
