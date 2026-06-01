@@ -77,6 +77,66 @@ func MarshalResponse(request *Request, response *Response) ([]byte, error) {
 	return rp.Bytes(), nil
 }
 
+func MarshalEmptyFormatError(buffer []byte) ([]byte, error) {
+	var id uint16 = 0
+	if len(buffer) > 1 {
+		id = binary.BigEndian.Uint16(buffer[0:2])
+	}
+
+	flags := Flags{
+		QR:     true, // this is a response
+		OPCODE: 0,
+		RCODE:  ResponseCodeFormatError,
+	}
+
+	header := &Header{
+		TransactionID:         id,
+		Flags:                 MarshalFlags(flags),
+		NumberOfQuestions:     0,
+		NumberOfAnswers:       0,
+		NumberOfAuthorityRRs:  0,
+		NumberOfAdditionalRRs: 0,
+	}
+
+	rp := &bytes.Buffer{}
+	err := writeHeader(rp, header)
+	if err != nil {
+		return nil, err
+	}
+
+	return rp.Bytes(), nil
+}
+
+func MarshalServerFailure(request *Request) ([]byte, error) {
+	flags := Flags{
+		QR:     true, // this is a response
+		OPCODE: 0,
+		RCODE:  ResponseCodeServFail,
+	}
+
+	header := &Header{
+		TransactionID:         request.TransactionID,
+		Flags:                 MarshalFlags(flags),
+		NumberOfQuestions:     1,
+		NumberOfAnswers:       0,
+		NumberOfAuthorityRRs:  0,
+		NumberOfAdditionalRRs: 0,
+	}
+
+	rp := &bytes.Buffer{}
+	err := writeHeader(rp, header)
+	if err != nil {
+		return nil, err
+	}
+
+	err = writeQuestion(rp, request.Question)
+	if err != nil {
+		return nil, err
+	}
+
+	return rp.Bytes(), nil
+}
+
 func UnmarshalResponse(data []byte) (*Response, error) {
 	p := bytes.NewBuffer(data)
 

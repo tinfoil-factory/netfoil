@@ -23,7 +23,7 @@ type DoHClient struct {
 }
 
 func (c *DoHClient) DoH(request *Request) (*Response, error) {
-	marshalledRequest, err := MarshalRequest(request)
+	marshalledRequest, err := MarshalRequest(0, request.Flags, request.Question)
 	if err != nil {
 		return nil, err
 	}

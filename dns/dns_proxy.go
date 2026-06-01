@@ -19,18 +19,18 @@ type workerTask struct {
 }
 
 type workerResult struct {
-	question        *Question
-	allowed         bool
-	remote          *net.UDPAddr
-	rawResponse     []byte
-	response        *Response
-	logEvents       []LogEvent
-	filterReasons   []FilterReason
-	err             error
-	time            time.Duration
-	cacheHit        bool
-	externalRequest bool
-	pinned          bool
+	remote             *net.UDPAddr
+	question           *Question
+	response           *Response
+	marshalledResponse []byte
+	allowed            bool
+	cacheHit           bool
+	externalRequest    bool
+	pinned             bool
+	logEvents          []LogEvent
+	filterReasons      []FilterReason
+	time               time.Duration
+	err                error
 }
 
 type worker struct {
@@ -102,105 +102,15 @@ func Server(conn *net.UDPConn, config *Config, policy *Policy, caCertPool *x509.
 		for result := range resultsChannel {
 			if result.err != nil {
 				fmt.Printf("error: worker failed to process: %s\n", result.err.Error())
-				continue
+			} else {
+				logResult(config, result)
 			}
 
-			if result.allowed && config.LogAllowed {
-				fmt.Printf("allow|%s|%s\n", result.question.Name, result.question.Type.Name())
-			}
-
-			if !result.allowed && config.LogDenied {
-				fmt.Printf("deny|%s|%s\n", result.question.Name, result.question.Type.Name())
-			}
-
-			if config.LogLevel == slog.LevelDebug {
-				fmt.Printf("result\n")
-				for _, logEvent := range result.logEvents {
-					fmt.Printf("  %s\n", logEvent)
+			if result.marshalledResponse != nil {
+				_, err = conn.WriteToUDP(result.marshalledResponse, result.remote)
+				if err != nil {
+					fmt.Printf("error: failed to write response: %s\n", err.Error())
 				}
-
-				if len(result.filterReasons) > 0 {
-					fmt.Printf("  filter\n")
-				}
-				for _, reason := range result.filterReasons {
-					fmt.Printf("    %s\n", reason)
-				}
-
-				fmt.Printf("  cache hit: %t, external request: %t, pinned: %t\n", result.cacheHit, result.externalRequest, result.pinned)
-				if result.response != nil {
-					fmt.Printf("  response [%d]\n", result.response.Flags.RCODE)
-					for _, answer := range result.response.Answers {
-						fmt.Printf("    name: %s\n", answer.Name)
-						fmt.Printf("      type: %d\n", answer.Type)
-						fmt.Printf("      TTL: %d\n", answer.TTL)
-
-						switch answer.Type {
-						case RecordTypeA:
-							fmt.Printf("      IPv4: %s\n", answer.IPv4.String())
-						case RecordTypeCNAME:
-							fmt.Printf("      CNAME: %s\n", answer.CNAME)
-						case RecordTypeAAAA:
-							fmt.Printf("      IPv6: %s\n", answer.IPv6.String())
-						case RecordTypeHTTPS:
-							name := "."
-							if answer.HTTPSRecord.TargetName != "" {
-								name = answer.HTTPSRecord.TargetName
-							}
-
-							alpn := ""
-							if len(answer.HTTPSRecord.ALPN) > 0 {
-								alpn = fmt.Sprintf(" alpn=\"%s\"", strings.Join(answer.HTTPSRecord.ALPN, ","))
-							}
-
-							ipv4Hints := ""
-							if len(answer.HTTPSRecord.IPv4Hint) > 0 {
-								sb := strings.Builder{}
-								for i, h := range answer.HTTPSRecord.IPv4Hint {
-									sb.WriteString(h.String())
-									if i < len(answer.HTTPSRecord.IPv4Hint)-1 {
-										sb.WriteString(",")
-									}
-								}
-
-								ipv4Hints = fmt.Sprintf(" ipv4hint=%s", sb.String())
-							}
-
-							ipv6Hints := ""
-							if len(answer.HTTPSRecord.IPv6Hint) > 0 {
-								sb := strings.Builder{}
-								for i, h := range answer.HTTPSRecord.IPv6Hint {
-									sb.WriteString(h.String())
-									if i < len(answer.HTTPSRecord.IPv6Hint)-1 {
-										sb.WriteString(",")
-									}
-								}
-
-								ipv6Hints = fmt.Sprintf(" ipv6hint=%s", sb.String())
-							}
-
-							ech := ""
-							if answer.HTTPSRecord.ECH != nil {
-								sb := strings.Builder{}
-								for i, e := range answer.HTTPSRecord.ECH {
-									sb.WriteString(e.PublicName)
-									if i < len(answer.HTTPSRecord.ECH)-1 {
-										sb.WriteString(",")
-									}
-								}
-
-								ech = fmt.Sprintf(" ech=%s", sb.String())
-							}
-
-							fmt.Printf("      HTTPS: %d %s%s%s%s%s\n", answer.HTTPSRecord.Priority, name, alpn, ipv4Hints, ipv6Hints, ech)
-						}
-					}
-				}
-				fmt.Printf("  time: %f\n", result.time.Seconds())
-			}
-
-			_, err = conn.WriteToUDP(result.rawResponse, result.remote)
-			if err != nil {
-				fmt.Printf("error: failed to write response: %s\n", err.Error())
 			}
 		}
 	}()
@@ -225,40 +135,159 @@ func Server(conn *net.UDPConn, config *Config, policy *Policy, caCertPool *x509.
 	}
 }
 
+func logResult(config *Config, result workerResult) {
+	nameWithoutTrailingDot := strings.TrimSuffix(result.question.Name, ".")
+	if result.allowed && config.LogAllowed {
+		fmt.Printf("allow|%s|%s\n", nameWithoutTrailingDot, result.question.Type.Name())
+	}
+
+	if !result.allowed && config.LogDenied {
+		fmt.Printf("deny|%s|%s\n", nameWithoutTrailingDot, result.question.Type.Name())
+	}
+
+	if config.LogLevel == slog.LevelDebug {
+		fmt.Printf("result\n")
+		for _, logEvent := range result.logEvents {
+			fmt.Printf("  %s\n", logEvent)
+		}
+
+		if len(result.filterReasons) > 0 {
+			fmt.Printf("  filter\n")
+		}
+		for _, reason := range result.filterReasons {
+			fmt.Printf("    %s\n", reason)
+		}
+
+		fmt.Printf("  cache hit: %t, external request: %t, pinned: %t\n", result.cacheHit, result.externalRequest, result.pinned)
+		if result.response != nil {
+			fmt.Printf("  response [%d]\n", result.response.Flags.RCODE)
+			for _, answer := range result.response.Answers {
+				fmt.Printf("    name: %s\n", answer.Name)
+				fmt.Printf("      type: %d\n", answer.Type)
+				fmt.Printf("      TTL: %d\n", answer.TTL)
+
+				switch answer.Type {
+				case RecordTypeA:
+					fmt.Printf("      IPv4: %s\n", answer.IPv4.String())
+				case RecordTypeCNAME:
+					fmt.Printf("      CNAME: %s\n", answer.CNAME)
+				case RecordTypeAAAA:
+					fmt.Printf("      IPv6: %s\n", answer.IPv6.String())
+				case RecordTypeHTTPS:
+					name := "."
+					if answer.HTTPSRecord.TargetName != "" {
+						name = answer.HTTPSRecord.TargetName
+					}
+
+					alpn := ""
+					if len(answer.HTTPSRecord.ALPN) > 0 {
+						alpn = fmt.Sprintf(" alpn=\"%s\"", strings.Join(answer.HTTPSRecord.ALPN, ","))
+					}
+
+					ipv4Hints := ""
+					if len(answer.HTTPSRecord.IPv4Hint) > 0 {
+						sb := strings.Builder{}
+						for i, h := range answer.HTTPSRecord.IPv4Hint {
+							sb.WriteString(h.String())
+							if i < len(answer.HTTPSRecord.IPv4Hint)-1 {
+								sb.WriteString(",")
+							}
+						}
+
+						ipv4Hints = fmt.Sprintf(" ipv4hint=%s", sb.String())
+					}
+
+					ipv6Hints := ""
+					if len(answer.HTTPSRecord.IPv6Hint) > 0 {
+						sb := strings.Builder{}
+						for i, h := range answer.HTTPSRecord.IPv6Hint {
+							sb.WriteString(h.String())
+							if i < len(answer.HTTPSRecord.IPv6Hint)-1 {
+								sb.WriteString(",")
+							}
+						}
+
+						ipv6Hints = fmt.Sprintf(" ipv6hint=%s", sb.String())
+					}
+
+					ech := ""
+					if answer.HTTPSRecord.ECH != nil {
+						sb := strings.Builder{}
+						for i, e := range answer.HTTPSRecord.ECH {
+							sb.WriteString(e.PublicName)
+							if i < len(answer.HTTPSRecord.ECH)-1 {
+								sb.WriteString(",")
+							}
+						}
+
+						ech = fmt.Sprintf(" ech=%s", sb.String())
+					}
+
+					fmt.Printf("      HTTPS: %d %s%s%s%s%s\n", answer.HTTPSRecord.Priority, name, alpn, ipv4Hints, ipv6Hints, ech)
+				}
+			}
+		}
+		fmt.Printf("  time: %f\n", result.time.Seconds())
+	}
+}
+
 func (w *worker) start() {
 	go func() {
 		for task := range w.taskQueue {
 			start := time.Now()
-			rawResponse, question, allowed, response, logEvents, filterReasons, cacheHit, externalRequest, pinned, err := w.process(&task)
+			result, err := w.process(&task)
 			elapsed := time.Since(start)
 
 			w.resultsChannel <- workerResult{
-				remote:          task.remote,
-				question:        question,
-				allowed:         allowed,
-				rawResponse:     rawResponse,
-				response:        response,
-				logEvents:       logEvents,
-				filterReasons:   filterReasons,
-				err:             err,
-				time:            elapsed,
-				cacheHit:        cacheHit,
-				externalRequest: externalRequest,
-				pinned:          pinned,
+				remote:             task.remote,
+				question:           result.question,
+				response:           result.response,
+				marshalledResponse: result.marshalledResponse,
+				allowed:            result.allowed,
+				cacheHit:           result.cacheHit,
+				externalRequest:    result.externalRequest,
+				pinned:             result.pinned,
+				logEvents:          result.logEvents,
+				filterReasons:      result.filterReasons,
+				time:               elapsed,
+				err:                err,
 			}
 		}
 	}()
 }
 
-func (w *worker) process(workerTask *workerTask) ([]byte, *Question, bool, *Response, []LogEvent, []FilterReason, bool, bool, bool, error) {
-	var question *Question = nil
-	allowed := false
-	logEvents := make([]LogEvent, 0)
-	filterReasons := make([]FilterReason, 0)
-	var response *Response = nil
-	cacheHit := false
-	externalRequest := false
-	pinned := false
+type processResponse struct {
+	marshalledResponse []byte
+	question           *Question
+	allowed            bool
+	response           *Response
+	cacheHit           bool
+	externalRequest    bool
+	pinned             bool
+	logEvents          []LogEvent
+	filterReasons      []FilterReason
+}
+
+func (p *processResponse) appendLogEvent(logEvent LogEvent) {
+	p.logEvents = append(p.logEvents, logEvent)
+}
+
+func (p *processResponse) appendFilterReason(filterReason ...FilterReason) {
+	p.filterReasons = append(p.filterReasons, filterReason...)
+}
+
+func (w *worker) process(workerTask *workerTask) (processResponse, error) {
+	result := processResponse{
+		question:           nil,
+		response:           nil,
+		marshalledResponse: nil,
+		allowed:            false,
+		cacheHit:           false,
+		externalRequest:    false,
+		pinned:             false,
+		logEvents:          make([]LogEvent, 0),
+		filterReasons:      make([]FilterReason, 0),
+	}
 
 	// FIXME check for too large requests
 	responseLength := workerTask.responseLength
@@ -266,21 +295,28 @@ func (w *worker) process(workerTask *workerTask) ([]byte, *Question, bool, *Resp
 	buf := workerTask.rawRequest
 	policy := w.policy
 
-	logEvents = append(logEvents, LogEvent(fmt.Sprintf("query from: %s", remote.String())))
+	result.appendLogEvent(LogEvent(fmt.Sprintf("query from: %s", remote.String())))
 
 	request, err := UnmarshalRequest(buf[:responseLength])
 	if err != nil {
-		return nil, question, allowed, response, logEvents, filterReasons, cacheHit, externalRequest, pinned, err
+		formatError, marshallErr := MarshalEmptyFormatError(buf[:responseLength])
+		if marshallErr != nil {
+			return result, fmt.Errorf("failed to marshall format error '%w' '%w'", err, marshallErr)
+		}
+
+		result.marshalledResponse = formatError
+		return result, err
 	}
 
-	question = &request.Question
+	question := &request.Question
+	result.question = question
 
-	logEvents = append(logEvents, LogEvent(fmt.Sprintf("domain: %s", question.Name)))
-	logEvents = append(logEvents, LogEvent(fmt.Sprintf("type: %d", question.Type)))
+	result.appendLogEvent(LogEvent(fmt.Sprintf("domain: %s", question.Name)))
+	result.appendLogEvent(LogEvent(fmt.Sprintf("type: %d", question.Type)))
 
 	if supportedRequest(request) {
 		queryAllowed, filterReason := policy.queryIsAllowed(*question)
-		filterReasons = append(filterReasons, filterReason...)
+		result.appendFilterReason(filterReason...)
 		if queryAllowed {
 			key := fmt.Sprintf("%s:%d", question.Name, question.Type)
 
@@ -292,7 +328,7 @@ func (w *worker) process(workerTask *workerTask) ([]byte, *Question, bool, *Resp
 				ip, found = policy.pinA[questionName]
 				if found {
 					candidateResponse = generateAResponse(question, ip)
-					pinned = true
+					result.pinned = true
 				}
 			}
 
@@ -300,7 +336,7 @@ func (w *worker) process(workerTask *workerTask) ([]byte, *Question, bool, *Resp
 				var timedCandidateResponse *timedResponse = nil
 				timedCandidateResponse, found = w.cache.Get(key)
 				if found {
-					cacheHit = true
+					result.cacheHit = true
 					var stillValid bool
 					candidateResponse, stillValid = timedCandidateResponse.rewriteTTLs()
 
@@ -311,11 +347,17 @@ func (w *worker) process(workerTask *workerTask) ([]byte, *Question, bool, *Resp
 			}
 
 			if !found {
-				externalRequest = true
+				result.externalRequest = true
 				candidateResponse, err = w.dohClient.DoH(request)
 				if err != nil {
 					// FIXME retries / proper response to client
-					return nil, question, allowed, response, logEvents, filterReasons, cacheHit, externalRequest, pinned, err
+					serverFailure, marshallErr := MarshalServerFailure(request)
+					if marshallErr != nil {
+						return result, fmt.Errorf("failed to marshall server error '%w' '%w'", err, marshallErr)
+					}
+
+					result.marshalledResponse = serverFailure
+					return result, err
 				}
 
 				// TODO responses without at TTL will not be evicted from the cache, so not caching it for now
@@ -341,25 +383,25 @@ func (w *worker) process(workerTask *workerTask) ([]byte, *Question, bool, *Resp
 			}
 
 			responseAllowed, filterReason := policy.responseIsAllowed(question.Name, question.Type, candidateResponse)
-			filterReasons = append(filterReasons, filterReason...)
+			result.appendFilterReason(filterReason...)
 			if responseAllowed {
-				allowed = true
-				response = candidateResponse
+				result.allowed = true
+				result.response = candidateResponse
 			} else {
-				response = generateBlockResponse(*question)
+				result.response = generateBlockResponse(*question)
 			}
 		} else {
-			response = generateBlockResponse(*question)
+			result.response = generateBlockResponse(*question)
 		}
 	} else {
 		l := fmt.Sprintf("unsupported request type %d", question.Type)
-		logEvents = append(logEvents, LogEvent(l))
+		result.appendLogEvent(LogEvent(l))
 
 		// FIXME what is the best response?
-		response = generateNotImplementedResponse()
+		result.response = generateNotImplementedResponse()
 	}
 
-	for i, answer := range response.Answers {
+	for i, answer := range result.response.Answers {
 		if answer.TTL < w.config.MinTTL {
 			answer.TTL = w.config.MinTTL
 		}
@@ -374,13 +416,14 @@ func (w *worker) process(workerTask *workerTask) ([]byte, *Question, bool, *Resp
 			}
 		}
 
-		response.Answers[i] = answer
+		result.response.Answers[i] = answer
 	}
 
-	d, err := MarshalResponse(request, response)
+	marshalledResponse, err := MarshalResponse(request, result.response)
 	if err != nil {
-		return nil, question, allowed, response, logEvents, filterReasons, cacheHit, externalRequest, pinned, err
+		return result, fmt.Errorf("failed to marshall response '%w'", err)
 	}
 
-	return d, question, allowed, response, logEvents, filterReasons, cacheHit, externalRequest, pinned, nil
+	result.marshalledResponse = marshalledResponse
+	return result, nil
 }
