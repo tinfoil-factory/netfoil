@@ -24,7 +24,7 @@ func TestRequest(t *testing.T) {
 		t.Errorf("expected question %s, got %s", "google.com.", request.Question.Name)
 	}
 
-	marshalled, err := MarshalRequest(request)
+	marshalled, err := MarshalRequest(request.TransactionID, request.Flags, request.Question)
 
 	if !bytes.Equal(marshalled, r) {
 		t.Errorf("expected marshalled %s, got %s", hex.EncodeToString(r), hex.EncodeToString(marshalled))

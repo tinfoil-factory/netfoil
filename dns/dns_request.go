@@ -102,13 +102,12 @@ func UnmarshalRequest(data []byte) (*Request, error) {
 	}, nil
 }
 
-func MarshalRequest(request *Request) ([]byte, error) {
+func MarshalRequest(transactionID uint16, flags Flags, question Question) ([]byte, error) {
 	buffer := &bytes.Buffer{}
 
-	flags := MarshalFlags(request.Flags)
 	header := &Header{
-		TransactionID:         request.TransactionID,
-		Flags:                 flags,
+		TransactionID:         transactionID,
+		Flags:                 MarshalFlags(flags),
 		NumberOfQuestions:     1,
 		NumberOfAnswers:       0,
 		NumberOfAdditionalRRs: 0,
@@ -120,17 +119,17 @@ func MarshalRequest(request *Request) ([]byte, error) {
 		return nil, err
 	}
 
-	err = writeDomain(buffer, request.Question.Name)
+	err = writeDomain(buffer, question.Name)
 	if err != nil {
 		return nil, err
 	}
 
-	err = writeType(buffer, request.Question.Type)
+	err = writeType(buffer, question.Type)
 	if err != nil {
 		return nil, err
 	}
 
-	err = writeClass(buffer, request.Question.Class)
+	err = writeClass(buffer, question.Class)
 	if err != nil {
 		return nil, err
 	}
