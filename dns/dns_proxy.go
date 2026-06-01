@@ -19,18 +19,18 @@ type workerTask struct {
 }
 
 type workerResult struct {
-	question        *Question
-	allowed         bool
-	remote          *net.UDPAddr
-	rawResponse     []byte
-	response        *Response
-	logEvents       []LogEvent
-	filterReasons   []FilterReason
-	err             error
-	time            time.Duration
-	cacheHit        bool
-	externalRequest bool
-	pinned          bool
+	remote             *net.UDPAddr
+	question           *Question
+	response           *Response
+	marshalledResponse []byte
+	allowed            bool
+	cacheHit           bool
+	externalRequest    bool
+	pinned             bool
+	logEvents          []LogEvent
+	filterReasons      []FilterReason
+	time               time.Duration
+	err                error
 }
 
 type worker struct {
@@ -106,8 +106,8 @@ func Server(conn *net.UDPConn, config *Config, policy *Policy, caCertPool *x509.
 				logResult(config, result)
 			}
 
-			if result.rawResponse != nil {
-				_, err = conn.WriteToUDP(result.rawResponse, result.remote)
+			if result.marshalledResponse != nil {
+				_, err = conn.WriteToUDP(result.marshalledResponse, result.remote)
 				if err != nil {
 					fmt.Printf("error: failed to write response: %s\n", err.Error())
 				}
@@ -235,36 +235,59 @@ func (w *worker) start() {
 	go func() {
 		for task := range w.taskQueue {
 			start := time.Now()
-			rawResponse, question, allowed, response, logEvents, filterReasons, cacheHit, externalRequest, pinned, err := w.process(&task)
+			result, err := w.process(&task)
 			elapsed := time.Since(start)
 
 			w.resultsChannel <- workerResult{
-				remote:          task.remote,
-				question:        question,
-				allowed:         allowed,
-				rawResponse:     rawResponse,
-				response:        response,
-				logEvents:       logEvents,
-				filterReasons:   filterReasons,
-				err:             err,
-				time:            elapsed,
-				cacheHit:        cacheHit,
-				externalRequest: externalRequest,
-				pinned:          pinned,
+				remote:             task.remote,
+				question:           result.question,
+				response:           result.response,
+				marshalledResponse: result.marshalledResponse,
+				allowed:            result.allowed,
+				cacheHit:           result.cacheHit,
+				externalRequest:    result.externalRequest,
+				pinned:             result.pinned,
+				logEvents:          result.logEvents,
+				filterReasons:      result.filterReasons,
+				time:               elapsed,
+				err:                err,
 			}
 		}
 	}()
 }
 
-func (w *worker) process(workerTask *workerTask) ([]byte, *Question, bool, *Response, []LogEvent, []FilterReason, bool, bool, bool, error) {
-	var question *Question = nil
-	allowed := false
-	logEvents := make([]LogEvent, 0)
-	filterReasons := make([]FilterReason, 0)
-	var response *Response = nil
-	cacheHit := false
-	externalRequest := false
-	pinned := false
+type processResponse struct {
+	marshalledResponse []byte
+	question           *Question
+	allowed            bool
+	response           *Response
+	cacheHit           bool
+	externalRequest    bool
+	pinned             bool
+	logEvents          []LogEvent
+	filterReasons      []FilterReason
+}
+
+func (p *processResponse) appendLogEvent(logEvent LogEvent) {
+	p.logEvents = append(p.logEvents, logEvent)
+}
+
+func (p *processResponse) appendFilterReason(filterReason ...FilterReason) {
+	p.filterReasons = append(p.filterReasons, filterReason...)
+}
+
+func (w *worker) process(workerTask *workerTask) (processResponse, error) {
+	result := processResponse{
+		question:           nil,
+		response:           nil,
+		marshalledResponse: nil,
+		allowed:            false,
+		cacheHit:           false,
+		externalRequest:    false,
+		pinned:             false,
+		logEvents:          make([]LogEvent, 0),
+		filterReasons:      make([]FilterReason, 0),
+	}
 
 	// FIXME check for too large requests
 	responseLength := workerTask.responseLength
@@ -272,26 +295,28 @@ func (w *worker) process(workerTask *workerTask) ([]byte, *Question, bool, *Resp
 	buf := workerTask.rawRequest
 	policy := w.policy
 
-	logEvents = append(logEvents, LogEvent(fmt.Sprintf("query from: %s", remote.String())))
+	result.appendLogEvent(LogEvent(fmt.Sprintf("query from: %s", remote.String())))
 
 	request, err := UnmarshalRequest(buf[:responseLength])
 	if err != nil {
 		formatError, marshallErr := MarshalEmptyFormatError(buf[:responseLength])
 		if marshallErr != nil {
-			return nil, question, allowed, response, logEvents, filterReasons, cacheHit, externalRequest, pinned, err
+			return result, err
 		}
 
-		return formatError, question, allowed, response, logEvents, filterReasons, cacheHit, externalRequest, pinned, err
+		result.marshalledResponse = formatError
+		return result, err
 	}
 
-	question = &request.Question
+	question := &request.Question
+	result.question = question
 
-	logEvents = append(logEvents, LogEvent(fmt.Sprintf("domain: %s", question.Name)))
-	logEvents = append(logEvents, LogEvent(fmt.Sprintf("type: %d", question.Type)))
+	result.appendLogEvent(LogEvent(fmt.Sprintf("domain: %s", question.Name)))
+	result.appendLogEvent(LogEvent(fmt.Sprintf("type: %d", question.Type)))
 
 	if supportedRequest(request) {
 		queryAllowed, filterReason := policy.queryIsAllowed(*question)
-		filterReasons = append(filterReasons, filterReason...)
+		result.appendFilterReason(filterReason...)
 		if queryAllowed {
 			key := fmt.Sprintf("%s:%d", question.Name, question.Type)
 
@@ -303,7 +328,7 @@ func (w *worker) process(workerTask *workerTask) ([]byte, *Question, bool, *Resp
 				ip, found = policy.pinA[questionName]
 				if found {
 					candidateResponse = generateAResponse(question, ip)
-					pinned = true
+					result.pinned = true
 				}
 			}
 
@@ -311,7 +336,7 @@ func (w *worker) process(workerTask *workerTask) ([]byte, *Question, bool, *Resp
 				var timedCandidateResponse *timedResponse = nil
 				timedCandidateResponse, found = w.cache.Get(key)
 				if found {
-					cacheHit = true
+					result.cacheHit = true
 					var stillValid bool
 					candidateResponse, stillValid = timedCandidateResponse.rewriteTTLs()
 
@@ -322,11 +347,11 @@ func (w *worker) process(workerTask *workerTask) ([]byte, *Question, bool, *Resp
 			}
 
 			if !found {
-				externalRequest = true
+				result.externalRequest = true
 				candidateResponse, err = w.dohClient.DoH(request)
 				if err != nil {
 					// FIXME retries / proper response to client
-					return nil, question, allowed, response, logEvents, filterReasons, cacheHit, externalRequest, pinned, err
+					return result, err
 				}
 
 				// TODO responses without at TTL will not be evicted from the cache, so not caching it for now
@@ -352,25 +377,25 @@ func (w *worker) process(workerTask *workerTask) ([]byte, *Question, bool, *Resp
 			}
 
 			responseAllowed, filterReason := policy.responseIsAllowed(question.Name, question.Type, candidateResponse)
-			filterReasons = append(filterReasons, filterReason...)
+			result.appendFilterReason(filterReason...)
 			if responseAllowed {
-				allowed = true
-				response = candidateResponse
+				result.allowed = true
+				result.response = candidateResponse
 			} else {
-				response = generateBlockResponse(*question)
+				result.response = generateBlockResponse(*question)
 			}
 		} else {
-			response = generateBlockResponse(*question)
+			result.response = generateBlockResponse(*question)
 		}
 	} else {
 		l := fmt.Sprintf("unsupported request type %d", question.Type)
-		logEvents = append(logEvents, LogEvent(l))
+		result.appendLogEvent(LogEvent(l))
 
 		// FIXME what is the best response?
-		response = generateNotImplementedResponse()
+		result.response = generateNotImplementedResponse()
 	}
 
-	for i, answer := range response.Answers {
+	for i, answer := range result.response.Answers {
 		if answer.TTL < w.config.MinTTL {
 			answer.TTL = w.config.MinTTL
 		}
@@ -385,13 +410,14 @@ func (w *worker) process(workerTask *workerTask) ([]byte, *Question, bool, *Resp
 			}
 		}
 
-		response.Answers[i] = answer
+		result.response.Answers[i] = answer
 	}
 
-	d, err := MarshalResponse(request, response)
+	marshalledResponse, err := MarshalResponse(request, result.response)
 	if err != nil {
-		return nil, question, allowed, response, logEvents, filterReasons, cacheHit, externalRequest, pinned, err
+		return result, err
 	}
 
-	return d, question, allowed, response, logEvents, filterReasons, cacheHit, externalRequest, pinned, nil
+	result.marshalledResponse = marshalledResponse
+	return result, nil
 }
