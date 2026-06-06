@@ -207,6 +207,7 @@ func unmarshalHTTPSRecord(data []byte) (*HTTPSRecord, error) {
 		return nil, err
 	}
 
+	var previousKey *uint16 = nil
 	for {
 		if p.Len() == 0 {
 			break
@@ -217,6 +218,14 @@ func unmarshalHTTPSRecord(data []byte) (*HTTPSRecord, error) {
 		if err != nil {
 			return nil, err
 		}
+
+		if previousKey != nil {
+			if key <= *previousKey {
+				// RFC 9460, section 2.2
+				return nil, fmt.Errorf("keys must be in strictly increasing order: %d", key)
+			}
+		}
+		previousKey = &key
 
 		value, err := readArray16(p)
 		if err != nil {
