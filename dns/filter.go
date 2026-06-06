@@ -665,7 +665,7 @@ func generateBlockResponse(question Question) *Response {
 	} else if recordType == RecordTypeHTTPS {
 		record := HTTPSRecord{
 			Priority:   1,
-			TargetName: "",
+			TargetName: ".",
 			ALPN:       []string{},
 			IPv4Hint:   []net.IP{ipv4Null},
 			IPv6Hint:   []net.IP{ipv6Null},
