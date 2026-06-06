@@ -355,7 +355,7 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 			}
 
 			record := answer.HTTPSRecord
-			if record.TargetName != "" {
+			if record.TargetName != "." {
 				domainPairs = append(domainPairs, DomainPair{
 					SourceDomain:      questionName,
 					DestinationDomain: record.TargetName,
