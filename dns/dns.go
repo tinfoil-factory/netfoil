@@ -306,7 +306,7 @@ func readDomain(data []byte, buffer *bytes.Buffer) (string, error) {
 
 			visitedOffsets[offset] = struct{}{}
 
-			if int(offset) > len(data) {
+			if int(offset) >= len(data) {
 				return "", fmt.Errorf("offset larger than data")
 			}
 			currentBuffer = bytes.NewBuffer(data[offset:])
