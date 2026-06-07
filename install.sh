@@ -1,13 +1,13 @@
 #!/bin/bash
 
+systemctl stop netfoil.socket --quiet
+systemctl stop netfoil --quiet
+
 set -e
 
 # AppArmor
 #cp packaging/apparmor/netfoil /etc/apparmor.d/netfoil
 #apparmor_parser -r /etc/apparmor.d/netfoil
-
-systemctl stop netfoil.socket --quiet
-systemctl stop netfoil --quiet
 
 sleep .2
 cp packaging/systemd/netfoil.socket /usr/lib/systemd/system/netfoil.socket
