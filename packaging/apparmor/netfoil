@@ -13,6 +13,7 @@ include <tunables/global>
   /etc/netfoil/* r,
   /etc/ssl/certs/ r,
   /etc/ssl/certs/* r,
+  /usr/share/ca-certificatas/mozilla/* r,
 
   # remove some of the defaults
   # TODO /proc, /sys, /etc

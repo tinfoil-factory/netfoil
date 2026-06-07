@@ -15,11 +15,13 @@ DynamicUser=true
 
 # Add --disable-speculation to disable speculative execution
 # Cloudflare DNS on Fedora --pin-certificate-authority /etc/pki/ca-trust/extracted/pem/directory-hash/SSL.com_Root_Certification_Authority_ECC.pem
+# Cloudflare DNS on Ubuntu --pin-certificate-authority /etc/ssl/certs/SSL.com_Root_Certification_Authority_ECC.pem
 ExecStart=/usr/sbin/netfoil --config-directory /etc/netfoil --filter-system-calls
 
 BindReadOnlyPaths=/usr/sbin/netfoil
 BindReadOnlyPaths=/etc/netfoil
 BindReadOnlyPaths=/etc/ssl
+BindReadOnlyPaths=/usr/share/ca-certificates/mozilla/
 BindReadOnlyPaths=/lib64/ld-linux-x86-64.so.2
 # Fedora
 #BindReadOnlyPaths=/etc/pki/ca-trust/
