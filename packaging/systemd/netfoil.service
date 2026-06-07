@@ -20,6 +20,7 @@ ExecStart=/usr/sbin/netfoil --config-directory /etc/netfoil --filter-system-call
 BindReadOnlyPaths=/usr/sbin/netfoil
 BindReadOnlyPaths=/etc/netfoil
 BindReadOnlyPaths=/etc/ssl
+BindReadOnlyPaths=/lib64/ld-linux-x86-64.so.2
 # Fedora
 #BindReadOnlyPaths=/etc/pki/ca-trust/
 
@@ -41,7 +42,7 @@ SystemCallArchitectures=native
 SystemCallFilter=close read write pread64
 
 # @file-system (5/88)
-SystemCallFilter=fcntl fstat getdents64 openat readlinkat
+SystemCallFilter=access fcntl fstat getdents64 openat readlinkat
 
 # @network-io (9/22)
 SystemCallFilter=connect getpeername getsockname getsockopt recvfrom sendto setsockopt socket
