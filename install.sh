@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 # AppArmor
 #cp packaging/apparmor/netfoil /etc/apparmor.d/netfoil
 #apparmor_parser -r /etc/apparmor.d/netfoil
