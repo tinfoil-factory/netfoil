@@ -107,6 +107,8 @@ func NewDoHClient(dohURL string, DoHIP string, caCertPool *x509.CertPool) (*DoHC
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			if addr == u.Hostname()+":443" {
 				addr = DoHIP + ":443"
+			} else {
+				return nil, fmt.Errorf("unexpected address '%s'", addr)
 			}
 			return dialer.DialContext(ctx, network, addr)
 		},
@@ -117,6 +119,9 @@ func NewDoHClient(dohURL string, DoHIP string, caCertPool *x509.CertPool) (*DoHC
 	client := http.Client{
 		Transport: httpTransport,
 		Timeout:   timeout,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 	}
 
 	return &DoHClient{
