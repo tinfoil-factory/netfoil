@@ -21,10 +21,11 @@ ExecStart=/usr/sbin/netfoil --config-directory /etc/netfoil --filter-system-call
 BindReadOnlyPaths=/usr/sbin/netfoil
 BindReadOnlyPaths=/etc/netfoil
 BindReadOnlyPaths=/etc/ssl
-BindReadOnlyPaths=/usr/share/ca-certificates/mozilla/
 BindReadOnlyPaths=/lib64/ld-linux-x86-64.so.2
+# Ubuntu
+BindReadOnlyPaths=-/usr/share/ca-certificates/mozilla/
 # Fedora
-#BindReadOnlyPaths=/etc/pki/ca-trust/
+BindReadOnlyPaths=-/etc/pki/ca-trust/
 
 # This is used to set firewall rules external to netfoil
 Slice=netfoil.slice
