@@ -56,7 +56,7 @@ Log each allowed request on a single line: `<allow/deny>|<domain>|<record type>`
  - *Example*: `LogAllowed=false`
 
 ### LogDenied=
-Log each allowed request on a single line: `<allow/deny>|<domain>|<record type>`.
+Log each denied request on a single line: `<allow/deny>|<domain>|<record type>`.
 
  - *Required*: no
  - *Default*: `true`
@@ -85,7 +85,7 @@ In seconds. If a TTL in an answer is larger than this number, it will be replace
 - *Example*: `MaxTTL=60`
 
 ### DenyPunycode=
-Boolean. If any request containing [punycode](https://en.wikipedia.org/wiki/Punycode) should be denied. Punycode is used to encode non-ASCII characters, e.g.
+Boolean. If any request containing [Punycode](https://en.wikipedia.org/wiki/Punycode) should be denied. Punycode is used to encode non-ASCII characters, e.g.
 `münchen.de` is encoded `xn--Mnchen-3ya.com`. The non-ASCII characters could be used in typosquatting attacks.
 
  - *Required*: no

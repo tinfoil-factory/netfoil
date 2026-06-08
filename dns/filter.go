@@ -493,7 +493,7 @@ func (p *Policy) domainIsAllowed(domain string) (bool, FilterReason) {
 		return false, FilterReason(reason)
 	}
 
-	// all block done, move to explicit allow
+	// all block rules done, move to explicit allow
 
 	if p.domainMatchesAllowExactly(domain) {
 		reason := fmt.Sprintf("allow due to exact allowlist: %s", domain)

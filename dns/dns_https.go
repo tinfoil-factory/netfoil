@@ -261,7 +261,7 @@ func unmarshalHTTPSRecord(data []byte) (*HTTPSRecord, error) {
 				return nil, fmt.Errorf("duplicate ECH field")
 			}
 
-			// https: //datatracker.ietf.org/doc/html/draft-ietf-tls-esni-22
+			// https://datatracker.ietf.org/doc/html/draft-ietf-tls-esni-22
 			d, err := UnmarshalECHConfig(value)
 			if err != nil {
 				return nil, err
