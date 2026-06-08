@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 GOOS=linux GOARCH=amd64 GO111MODULE=on CGO_ENABLED=0 go build -trimpath -o netfoil -buildmode=pie cmd/netfoil/main.go
 
 # Turn on all spectre mitigations https://go.dev/wiki/Spectre
