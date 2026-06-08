@@ -117,6 +117,7 @@ func (l *List[T]) MoveToFront(e *ListElement[T]) {
 	} else {
 		if l.tail == e {
 			l.tail = l.tail.previous
+			l.tail.next = nil
 		} else {
 			a := e.previous
 			b := e.next
