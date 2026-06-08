@@ -50,12 +50,18 @@ func (c *DoHClient) DoH(request *Request) (*Response, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		err = fmt.Errorf("DNS query failed: %s", resp.Status)
+	} else if resp.Header.Get("Content-Type") != "application/dns-message" {
+		err = fmt.Errorf("wrong content type in DNS response")
+	}
+
+	if err != nil {
 		closeErr := resp.Body.Close()
 		if closeErr != nil {
 			return nil, fmt.Errorf("DNS query failed: %s, close failed %w", resp.Status, closeErr)
 		}
 
-		return nil, fmt.Errorf("DNS query failed: %s", resp.Status)
+		return nil, err
 	}
 
 	limitedBody := io.LimitReader(resp.Body, UINT16_MAX)
