@@ -388,10 +388,10 @@ func (w *worker) process(workerTask *workerTask) (processResponse, error) {
 				result.allowed = true
 				result.response = candidateResponse
 			} else {
-				result.response = generateBlockResponse(*question)
+				result.response = generateBlockResponse()
 			}
 		} else {
-			result.response = generateBlockResponse(*question)
+			result.response = generateBlockResponse()
 		}
 	} else {
 		l := fmt.Sprintf("unsupported request type %d", question.Type)
