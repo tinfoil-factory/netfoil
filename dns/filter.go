@@ -638,54 +638,15 @@ func (p *Policy) ipv6IsAllowed(ipString string) (bool, FilterReason) {
 	return false, FilterReason(reason)
 }
 
-func generateBlockResponse(question Question) *Response {
-	// TODO make response type configurable? null, NXDOMAIN and NODATA
-	domain := question.Name
-	recordType := question.Type
-
+func generateBlockResponse() *Response {
 	var response *Response
 	flags := Flags{
-		RCODE: ResponseCodeNoError,
+		RCODE: ResponseCodeNXDomain,
 	}
 
-	if recordType == RecordTypeA || recordType == RecordTypeAAAA {
-		response = &Response{
-			Flags: flags,
-			Answers: []Answer{
-				{
-					Name:  domain,
-					Type:  recordType,
-					Class: ClassTypeIN,
-					TTL:   defaultTTL,
-					IPv4:  ipv4Null,
-					IPv6:  ipv6Null,
-				},
-			},
-		}
-	} else if recordType == RecordTypeHTTPS {
-		record := HTTPSRecord{
-			Priority:   1,
-			TargetName: ".",
-			ALPN:       []string{},
-			IPv4Hint:   []net.IP{ipv4Null},
-			IPv6Hint:   []net.IP{ipv6Null},
-		}
-
-		response = &Response{
-			Flags: flags,
-			Answers: []Answer{
-				{
-					Name:        domain,
-					Type:        recordType,
-					Class:       ClassTypeIN,
-					TTL:         defaultTTL,
-					HTTPSRecord: record,
-				},
-			},
-		}
-	} else {
-		// FIXME return null response rather than NODATA
-		response = generateNoDataResponse()
+	response = &Response{
+		Flags:   flags,
+		Answers: nil,
 	}
 
 	return response
