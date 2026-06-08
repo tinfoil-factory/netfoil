@@ -1,7 +1,5 @@
 #!/bin/bash
 
-set -e
-
 systemctl stop netfoil.socket
 systemctl stop netfoil.service
 systemctl stop netfoil.slice
