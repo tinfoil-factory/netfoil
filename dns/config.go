@@ -49,10 +49,21 @@ func ReadConfigFile(configDirectory string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
-	return parseConfig(scanner)
+	result, err := parseConfig(scanner)
+	closeErr := file.Close()
+	if err != nil || closeErr != nil {
+		if closeErr == nil {
+			return nil, err
+		} else if err == nil {
+			return nil, closeErr
+		}
+
+		return nil, fmt.Errorf("both parsing and close failed %w %w", err, closeErr)
+	}
+
+	return result, nil
 }
 
 type ConfigKey string
@@ -202,6 +213,11 @@ func parseConfig(scanner *bufio.Scanner) (*Config, error) {
 		}
 	}
 
+	err := scanner.Err()
+	if err != nil {
+		return nil, err
+	}
+
 	dohURL, err := configMap.GetRequiredString(keyDohURL)
 	if err != nil {
 		return nil, err
@@ -274,7 +290,6 @@ func readConfig(configDirectory string, filename string) (res []string, err erro
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
 
 	var result []string
 	sc := bufio.NewScanner(file)
@@ -284,6 +299,18 @@ func readConfig(configDirectory string, filename string) (res []string, err erro
 		if len(line) > 0 && !strings.HasPrefix(line, "#") {
 			result = append(result, line)
 		}
+	}
+
+	err = sc.Err()
+	closeErr := file.Close()
+	if err != nil || closeErr != nil {
+		if closeErr == nil {
+			return nil, err
+		} else if err == nil {
+			return nil, closeErr
+		}
+
+		return nil, fmt.Errorf("both scanning and close failed %w %w", err, closeErr)
 	}
 
 	return result, err
