@@ -64,7 +64,7 @@ func MarshalResponse(request *Request, response *Response) ([]byte, error) {
 		return nil, err
 	}
 
-	if q.Type == 1 || q.Type == 28 || q.Type == 65 {
+	if q.Type == RecordTypeA || q.Type == RecordTypeAAAA || q.Type == RecordTypeHTTPS {
 		// Response
 		for _, answer := range response.Answers {
 			err = writeAnswer(rp, answer)
