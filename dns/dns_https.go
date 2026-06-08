@@ -23,6 +23,9 @@ func decodeCloudflareRecord(data string) ([]byte, error) {
 	}
 
 	l, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return nil, err
+	}
 
 	if len(a) != l {
 		return nil, fmt.Errorf("invalid answer length: %d", len(a))

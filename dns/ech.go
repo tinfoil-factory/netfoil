@@ -214,6 +214,9 @@ func marshalInner(echConfig *ECHConfig) ([]byte, error) {
 	}
 
 	err = binary.Write(&buffer, binary.BigEndian, uint16(suitesLength))
+	if err != nil {
+		return nil, err
+	}
 
 	for _, suite := range echConfig.HPKEKeyConfig.HPKESymmetricCipherSuites {
 		err = binary.Write(&buffer, binary.BigEndian, suite.HPKEKDFID)

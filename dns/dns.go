@@ -266,7 +266,10 @@ func writeDomain(buffer *bytes.Buffer, domain string) error {
 			}
 		}
 	} else {
-		buffer.WriteByte(0)
+		err := buffer.WriteByte(0)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
