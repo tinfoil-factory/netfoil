@@ -62,8 +62,10 @@ func (c *DoHClient) DoH(request *Request) (*Response, error) {
 	body, err := io.ReadAll(limitedBody)
 	closeErr := resp.Body.Close()
 	if err != nil || closeErr != nil {
-		if err == nil || closeErr == nil {
+		if closeErr == nil {
 			return nil, err
+		} else if err == nil {
+			return nil, closeErr
 		}
 
 		return nil, fmt.Errorf("failed to read and close %w %w", err, closeErr)
