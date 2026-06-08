@@ -7,9 +7,9 @@ systemctl disable netfoil.socket
 systemctl disable netfoil.service
 systemctl disable netfoil.slice
 
-rm /usr/lib/systemd/system/netfoil.socket
-rm /usr/lib/systemd/system/netfoil.service
-rm /usr/lib/systemd/system/netfoil.slice
-rm /usr/sbin/netfoil
+rm -f /usr/lib/systemd/system/netfoil.socket
+rm -f /usr/lib/systemd/system/netfoil.service
+rm -f /usr/lib/systemd/system/netfoil.slice
+rm -f /usr/sbin/netfoil
 
 systemctl daemon-reload
