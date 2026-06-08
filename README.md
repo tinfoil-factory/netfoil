@@ -48,9 +48,9 @@ Copy `config` directory to `/etc/netfoil`
 ./pre-install.sh
 ```
 
-Set up Systemd service and AppArmor
+Set up Systemd service (alternative: `./install-with-apparmor.sh`)
 ```
-./install.sh
+./install-without-lsm.sh
 ```
 
 Edit `/etc/systemd/resolved.conf`
@@ -61,5 +61,6 @@ And make sure `DNSSEC=no` and `DNSOverTLS=no`.
 
 ## Remove
 ```
-./remove.sh
+./remove-without-lsm.sh
 ```
+(or: `./remove-with-apparmor.sh`)

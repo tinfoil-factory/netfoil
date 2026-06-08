@@ -64,7 +64,7 @@ func MarshalResponse(request *Request, response *Response) ([]byte, error) {
 		return nil, err
 	}
 
-	if q.Type == 1 || q.Type == 28 || q.Type == 65 {
+	if q.Type == RecordTypeA || q.Type == RecordTypeAAAA || q.Type == RecordTypeHTTPS {
 		// Response
 		for _, answer := range response.Answers {
 			err = writeAnswer(rp, answer)
@@ -216,7 +216,7 @@ func UnmarshalResponse(data []byte) (*Response, error) {
 		switch t {
 		case RecordTypeA:
 			if len(rawData) != 4 {
-				return nil, fmt.Errorf("invalid IPv4 length in length")
+				return nil, fmt.Errorf("invalid IPv4 length in response")
 			}
 
 			ip := net.IPv4(rawData[0], rawData[1], rawData[2], rawData[3])

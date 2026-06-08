@@ -19,7 +19,7 @@ func TestHTTPS(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if record.TargetName != "" {
+	if record.TargetName != "." {
 		t.Fatal("target name should be empty")
 	}
 

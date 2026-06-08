@@ -209,6 +209,10 @@ func TestMoveToFrontDouble(t *testing.T) {
 		t.Error("wrong tail")
 	}
 
+	if l.Tail().Next() != nil {
+		t.Error("tail.next should be nil")
+	}
+
 	if l.Size() != 2 {
 		t.Error("size should be 1")
 	}

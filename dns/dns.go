@@ -239,6 +239,14 @@ func writeAnswer(buffer *bytes.Buffer, answer Answer) error {
 }
 
 func writeDomain(buffer *bytes.Buffer, domain string) error {
+	if len(domain) == 0 {
+		return fmt.Errorf("empty domain")
+	}
+
+	if !strings.HasSuffix(domain, ".") {
+		return fmt.Errorf("domain is missing trailing '.'")
+	}
+
 	if domain != "." {
 		parts := strings.Split(domain, ".")
 		for _, part := range parts {
@@ -258,7 +266,10 @@ func writeDomain(buffer *bytes.Buffer, domain string) error {
 			}
 		}
 	} else {
-		buffer.WriteByte(0)
+		err := buffer.WriteByte(0)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -298,7 +309,7 @@ func readDomain(data []byte, buffer *bytes.Buffer) (string, error) {
 
 			visitedOffsets[offset] = struct{}{}
 
-			if int(offset) > len(data) {
+			if int(offset) >= len(data) {
 				return "", fmt.Errorf("offset larger than data")
 			}
 			currentBuffer = bytes.NewBuffer(data[offset:])
@@ -356,6 +367,7 @@ func readUncompressedDomain(buffer *bytes.Buffer) (string, error) {
 			return "", err
 		}
 		if targetLength == 0 {
+			parts = append(parts, "")
 			break
 		}
 
@@ -372,7 +384,12 @@ func readUncompressedDomain(buffer *bytes.Buffer) (string, error) {
 		parts = append(parts, string(section))
 	}
 
-	return strings.Join(parts, "."), nil
+	name := "."
+	if len(parts) > 1 {
+		name = strings.Join(parts, ".")
+	}
+
+	return name, nil
 }
 
 func readArray8(buffer *bytes.Buffer) ([]byte, error) {

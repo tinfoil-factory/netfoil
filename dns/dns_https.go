@@ -23,6 +23,9 @@ func decodeCloudflareRecord(data string) ([]byte, error) {
 	}
 
 	l, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return nil, err
+	}
 
 	if len(a) != l {
 		return nil, fmt.Errorf("invalid answer length: %d", len(a))
@@ -207,6 +210,7 @@ func unmarshalHTTPSRecord(data []byte) (*HTTPSRecord, error) {
 		return nil, err
 	}
 
+	var previousKey *uint16 = nil
 	for {
 		if p.Len() == 0 {
 			break
@@ -217,6 +221,14 @@ func unmarshalHTTPSRecord(data []byte) (*HTTPSRecord, error) {
 		if err != nil {
 			return nil, err
 		}
+
+		if previousKey != nil {
+			if key <= *previousKey {
+				// RFC 9460, section 2.2
+				return nil, fmt.Errorf("keys must be in strictly increasing order: %d", key)
+			}
+		}
+		previousKey = &key
 
 		value, err := readArray16(p)
 		if err != nil {
@@ -249,7 +261,7 @@ func unmarshalHTTPSRecord(data []byte) (*HTTPSRecord, error) {
 				return nil, fmt.Errorf("duplicate ECH field")
 			}
 
-			// https: //datatracker.ietf.org/doc/html/draft-ietf-tls-esni-22
+			// https://datatracker.ietf.org/doc/html/draft-ietf-tls-esni-22
 			d, err := UnmarshalECHConfig(value)
 			if err != nil {
 				return nil, err

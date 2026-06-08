@@ -1,11 +1,9 @@
 #!/bin/bash
 
-# AppArmor
-#cp packaging/apparmor/netfoil /etc/apparmor.d/netfoil
-#apparmor_parser -r /etc/apparmor.d/netfoil
-
 systemctl stop netfoil.socket --quiet
 systemctl stop netfoil --quiet
+
+set -e
 
 sleep .2
 cp packaging/systemd/netfoil.socket /usr/lib/systemd/system/netfoil.socket
@@ -16,3 +14,5 @@ cp netfoil /usr/sbin/netfoil
 systemctl daemon-reload
 systemctl start netfoil.socket
 systemctl start netfoil.service
+
+systemctl enable netfoil.service

@@ -355,7 +355,7 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 			}
 
 			record := answer.HTTPSRecord
-			if record.TargetName != "" {
+			if record.TargetName != "." {
 				domainPairs = append(domainPairs, DomainPair{
 					SourceDomain:      questionName,
 					DestinationDomain: record.TargetName,
@@ -493,7 +493,7 @@ func (p *Policy) domainIsAllowed(domain string) (bool, FilterReason) {
 		return false, FilterReason(reason)
 	}
 
-	// all block done, move to explicit allow
+	// all block rules done, move to explicit allow
 
 	if p.domainMatchesAllowExactly(domain) {
 		reason := fmt.Sprintf("allow due to exact allowlist: %s", domain)
@@ -665,7 +665,7 @@ func generateBlockResponse(question Question) *Response {
 	} else if recordType == RecordTypeHTTPS {
 		record := HTTPSRecord{
 			Priority:   1,
-			TargetName: "",
+			TargetName: ".",
 			ALPN:       []string{},
 			IPv4Hint:   []net.IP{ipv4Null},
 			IPv6Hint:   []net.IP{ipv6Null},

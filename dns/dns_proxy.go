@@ -299,9 +299,9 @@ func (w *worker) process(workerTask *workerTask) (processResponse, error) {
 
 	request, err := UnmarshalRequest(buf[:responseLength])
 	if err != nil {
-		formatError, marshallErr := MarshalEmptyFormatError(buf[:responseLength])
-		if marshallErr != nil {
-			return result, fmt.Errorf("failed to marshall format error '%w' '%w'", err, marshallErr)
+		formatError, marshalErr := MarshalEmptyFormatError(buf[:responseLength])
+		if marshalErr != nil {
+			return result, fmt.Errorf("failed to marshal format error '%w' '%w'", err, marshalErr)
 		}
 
 		result.marshalledResponse = formatError
@@ -351,9 +351,9 @@ func (w *worker) process(workerTask *workerTask) (processResponse, error) {
 				candidateResponse, err = w.dohClient.DoH(request)
 				if err != nil {
 					// FIXME retries / proper response to client
-					serverFailure, marshallErr := MarshalServerFailure(request)
-					if marshallErr != nil {
-						return result, fmt.Errorf("failed to marshall server error '%w' '%w'", err, marshallErr)
+					serverFailure, marshalErr := MarshalServerFailure(request)
+					if marshalErr != nil {
+						return result, fmt.Errorf("failed to marshal server error '%w' '%w'", err, marshalErr)
 					}
 
 					result.marshalledResponse = serverFailure
@@ -421,7 +421,7 @@ func (w *worker) process(workerTask *workerTask) (processResponse, error) {
 
 	marshalledResponse, err := MarshalResponse(request, result.response)
 	if err != nil {
-		return result, fmt.Errorf("failed to marshall response '%w'", err)
+		return result, fmt.Errorf("failed to marshal response '%w'", err)
 	}
 
 	result.marshalledResponse = marshalledResponse

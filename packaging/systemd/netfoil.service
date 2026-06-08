@@ -15,13 +15,17 @@ DynamicUser=true
 
 # Add --disable-speculation to disable speculative execution
 # Cloudflare DNS on Fedora --pin-certificate-authority /etc/pki/ca-trust/extracted/pem/directory-hash/SSL.com_Root_Certification_Authority_ECC.pem
+# Cloudflare DNS on Ubuntu --pin-certificate-authority /etc/ssl/certs/SSL.com_Root_Certification_Authority_ECC.pem
 ExecStart=/usr/sbin/netfoil --config-directory /etc/netfoil --filter-system-calls
 
 BindReadOnlyPaths=/usr/sbin/netfoil
 BindReadOnlyPaths=/etc/netfoil
 BindReadOnlyPaths=/etc/ssl
+BindReadOnlyPaths=/lib64/ld-linux-x86-64.so.2
+# Ubuntu
+BindReadOnlyPaths=-/usr/share/ca-certificates/mozilla/
 # Fedora
-#BindReadOnlyPaths=/etc/pki/ca-trust/
+BindReadOnlyPaths=-/etc/pki/ca-trust/
 
 # This is used to set firewall rules external to netfoil
 Slice=netfoil.slice
@@ -41,7 +45,7 @@ SystemCallArchitectures=native
 SystemCallFilter=close read write pread64
 
 # @file-system (5/88)
-SystemCallFilter=fcntl fstat getdents64 openat readlinkat
+SystemCallFilter=access fcntl fstat getdents64 openat readlinkat
 
 # @network-io (9/22)
 SystemCallFilter=connect getpeername getsockname getsockopt recvfrom sendto setsockopt socket
