@@ -134,7 +134,7 @@ IPAddressAllow=1.0.0.2
 # IPAddressAllow=1.0.0.1
 # IPAddressAllow=8.8.8.8
 # IPAddressAllow=8.8.8.4
-# IPAddressDeny=any
+IPAddressDeny=any
 
 # Looks like there might be bug in old versions of systemd so that this is ignored
 SocketBindDeny=any
