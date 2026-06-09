@@ -5,9 +5,9 @@ include <tunables/global>
 /usr/sbin/netfoil flags=(enforce) {
   # /etc/apparmor.d/abstractions/base
   include <abstractions/base>
-  network inet tcp ip=1.1.1.2,
-  network inet tcp ip=1.0.0.2,
-  network inet udp peer=(ip=127.0.0.1),
+  network inet tcp,
+  network inet tcp,
+  network inet udp,
  
   /etc/netfoil/* r,
   /etc/ssl/certs/ r,
