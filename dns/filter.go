@@ -38,6 +38,10 @@ type Policy struct {
 
 func NewPolicy(configDirectory string, blockPunycode bool, pinResponseDomain bool) (*Policy, error) {
 	knownTLDs, err := readKnownTLDs(configDirectory)
+	if err != nil {
+		return nil, err
+	}
+
 	partialPolicy := Policy{
 		knownTLDs:     knownTLDs,
 		blockPunycode: blockPunycode,
