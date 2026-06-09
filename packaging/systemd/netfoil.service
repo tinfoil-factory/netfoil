@@ -128,8 +128,8 @@ DevicePolicy=closed
 
 # This probably needs to be configurable / be set elsewhere
 # IPAddressAllow=127.0.0.1
-# IPAddressAllow=1.1.1.2
-# IPAddressAllow=1.0.0.2
+IPAddressAllow=1.1.1.2
+IPAddressAllow=1.0.0.2
 # IPAddressAllow=1.1.1.1
 # IPAddressAllow=1.0.0.1
 # IPAddressAllow=8.8.8.8
