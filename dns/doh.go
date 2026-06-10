@@ -115,7 +115,7 @@ func NewDoHClient(dohURL string, DoHIP netip.Addr, caCertPool *x509.CertPool) (*
 	httpTransport := &http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			if addr == u.Hostname()+":443" {
-				addr = DoHIP.String() + ":443"
+				addr = net.JoinHostPort(DoHIP.String(), "443")
 			} else {
 				return nil, fmt.Errorf("unexpected address '%s'", addr)
 			}
