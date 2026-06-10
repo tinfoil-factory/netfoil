@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
 	"time"
@@ -86,7 +87,7 @@ func (c *DoHClient) DoH(request *Request) (*Response, error) {
 
 }
 
-func NewDoHClient(dohURL string, DoHIP string, caCertPool *x509.CertPool) (*DoHClient, error) {
+func NewDoHClient(dohURL string, DoHIP netip.Addr, caCertPool *x509.CertPool) (*DoHClient, error) {
 	u, err := url.Parse(dohURL)
 	if err != nil {
 		return nil, err
@@ -114,7 +115,7 @@ func NewDoHClient(dohURL string, DoHIP string, caCertPool *x509.CertPool) (*DoHC
 	httpTransport := &http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			if addr == u.Hostname()+":443" {
-				addr = DoHIP + ":443"
+				addr = DoHIP.String() + ":443"
 			} else {
 				return nil, fmt.Errorf("unexpected address '%s'", addr)
 			}

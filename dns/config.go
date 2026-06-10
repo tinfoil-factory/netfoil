@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -32,7 +33,7 @@ const (
 
 type Config struct {
 	DoHURL            string
-	DoHIPs            []string
+	DoHIPs            []netip.Addr
 	MinTTL            uint32
 	MaxTTL            uint32
 	DenyPunycode      bool
@@ -223,10 +224,18 @@ func parseConfig(scanner *bufio.Scanner) (*Config, error) {
 		return nil, err
 	}
 
-	// TODO return []net.IP instead
-	dohIPs, err := configMap.GetRequiredListOfStrings(keyDohIPs)
+	dohIPsRaw, err := configMap.GetRequiredListOfStrings(keyDohIPs)
 	if err != nil {
 		return nil, err
+	}
+	dohIPs := make([]netip.Addr, 0)
+	for _, ip := range dohIPsRaw {
+		parsedIP, err := netip.ParseAddr(ip)
+		if err != nil {
+			return nil, err
+		}
+
+		dohIPs = append(dohIPs, parsedIP)
 	}
 
 	minTTL, err := configMap.GetUint32(keyMinTTL, defaultMinTTL)
