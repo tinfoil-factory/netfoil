@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/tinfoil-factory/netfoil/dns"
+	"github.com/tinfoil-factory/netfoil/internal/dns"
 	"golang.org/x/net/bpf"
 	"golang.org/x/sys/unix"
 )
@@ -210,6 +210,9 @@ func applySystemCallFilter(filter bool, caCertPool *x509.CertPool) error {
 
 			// @resources
 			//unix.SYS_SETRLIMIT,
+
+			// Needed when vDSO is disabled,
+			unix.SYS_CLOCK_GETTIME,
 		}
 
 		if caCertPool == nil {

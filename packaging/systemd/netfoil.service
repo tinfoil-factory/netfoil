@@ -16,6 +16,7 @@ DynamicUser=true
 # Add --disable-speculation to disable speculative execution
 # Cloudflare DNS on Fedora --pin-certificate-authority /etc/pki/ca-trust/extracted/pem/directory-hash/SSL.com_Root_Certification_Authority_ECC.pem
 # Cloudflare DNS on Ubuntu --pin-certificate-authority /etc/ssl/certs/SSL.com_Root_Certification_Authority_ECC.pem
+Environment="GOMEMLIMIT=95MiB"
 ExecStart=/usr/sbin/netfoil --config-directory /etc/netfoil --filter-system-calls
 
 BindReadOnlyPaths=/usr/sbin/netfoil
@@ -144,6 +145,7 @@ SocketBindDeny=any
 
 CPUQuota=50%
 MemoryMax=100M
+MemorySwapMax=0
 TasksMax=100
 
 # TODO IO & networking

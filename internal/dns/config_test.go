@@ -32,7 +32,7 @@ LogLevel=debug`
 		t.Errorf("wrong DoHURL")
 	}
 
-	if len(config.DoHIPs) != 1 || config.DoHIPs[0] != "0.0.0.0" {
+	if len(config.DoHIPs) != 1 || config.DoHIPs[0].String() != "0.0.0.0" {
 		t.Errorf("wrong DoHIPs")
 	}
 
@@ -115,5 +115,40 @@ DoHIPs=0.0.0.0`
 
 	if config.LogLevel != slog.LevelInfo {
 		t.Errorf("LogLevel should be info")
+	}
+}
+
+func TestIPv6(t *testing.T) {
+	s := `DoHURL=https://example.com/dns-query
+DoHIPs=1111:2222:3333:444::5555`
+
+	reader := strings.NewReader(s)
+	scanner := bufio.NewScanner(reader)
+
+	config, err := parseConfig(scanner)
+	if err != nil {
+		t.Fatalf("failed to parse config: %v", err)
+	}
+
+	if len(config.DoHIPs) != 1 || config.DoHIPs[0].String() != "1111:2222:3333:444::5555" {
+		t.Errorf("wrong DoHIPs")
+	}
+}
+
+func TestInvalidIP(t *testing.T) {
+	s := `DoHURL=https://example.com/dns-query
+DoHIPs=a.0.0.0`
+
+	reader := strings.NewReader(s)
+	scanner := bufio.NewScanner(reader)
+
+	_, err := parseConfig(scanner)
+	if err == nil {
+		t.Fatalf("parsing should fail")
+	}
+
+	expectedError := "ParseAddr(\"a.0.0.0\"): unexpected character (at \"a.0.0.0\")"
+	if err.Error() != expectedError {
+		t.Fatalf("expected '%s', got '%s'", expectedError, err.Error())
 	}
 }

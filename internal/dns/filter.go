@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/tinfoil-factory/netfoil/suffixtrie"
+	"github.com/tinfoil-factory/netfoil/internal/suffixtrie"
 )
 
 // https://datatracker.ietf.org/doc/html/rfc921
@@ -158,56 +158,14 @@ func NewPolicy(configDirectory string, blockPunycode bool, pinResponseDomain boo
 		allowIPv6 = append(allowIPv6, p)
 	}
 
-	pinResponseDomainRaw, err := readConfig(configDirectory, configFilenamePinResponseDomain)
-	if err != nil {
-		return nil, err
-	}
-	pinResponseDomainMap := make(map[string]map[string]struct{})
-
-	for _, d := range pinResponseDomainRaw {
-		parts := strings.Split(d, ":")
-		if len(parts) != 2 {
-			return nil, fmt.Errorf("invalid PinResponseDomain format: %s", d)
-		}
-
-		sourceDomain := parts[0]
-		destinationDomain := parts[1]
-		source, found := pinResponseDomainMap[sourceDomain]
-		if !found {
-			source = make(map[string]struct{})
-		}
-
-		source[destinationDomain] = struct{}{}
-		pinResponseDomainMap[sourceDomain] = source
-	}
-
-	pinARaw, err := readConfig(configDirectory, configFilenamePinA)
+	pinResponseDomainMap, err := readAndValidatePinResponseDomain(configDirectory, partialPolicy)
 	if err != nil {
 		return nil, err
 	}
 
-	pinA := make(map[string]net.IP)
-	for _, r := range pinARaw {
-		parts := strings.Split(r, ":")
-		if len(parts) != 2 {
-			return nil, fmt.Errorf("invalid pin.a format: %s", r)
-		}
-
-		domain := parts[0]
-		netIP, err := netip.ParseAddr(parts[1])
-		if err != nil || !netIP.Is4() {
-			return nil, fmt.Errorf("invalid pin.a ip: %s", r)
-		}
-
-		data := netIP.As4()
-		ip := net.IP{data[0], data[1], data[2], data[3]}
-
-		_, found := pinA[domain]
-		if !found {
-			pinA[domain] = ip
-		} else {
-			return nil, fmt.Errorf("duplicate pin.a domain: %s", domain)
-		}
+	pinA, err := readAndValidatePinA(configDirectory, partialPolicy)
+	if err != nil {
+		return nil, err
 	}
 
 	return &Policy{
@@ -323,6 +281,84 @@ func readAndValidateExact(configDirectory string, filename string, policy Policy
 	}
 
 	return domains, nil
+}
+
+func readAndValidatePinResponseDomain(configDirectory string, policy Policy) (map[string]map[string]struct{}, error) {
+	configFilename := configFilenamePinResponseDomain
+	pinResponseDomainRaw, err := readConfig(configDirectory, configFilename)
+	if err != nil {
+		return nil, err
+	}
+
+	pinResponseDomainMap := make(map[string]map[string]struct{})
+	for _, d := range pinResponseDomainRaw {
+		parts := strings.Split(d, ":")
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("%s expected '<domain>:<domain>', got '%s'", configFilename, d)
+		}
+
+		sourceDomain := parts[0]
+		destinationDomain := parts[1]
+
+		err = policy.domainHasCorrectFormat(sourceDomain)
+		if err != nil {
+			return nil, fmt.Errorf("%s source domain '%s': %s", configFilename, sourceDomain, err.Error())
+		}
+
+		err = policy.domainHasCorrectFormat(destinationDomain)
+		if err != nil {
+			return nil, fmt.Errorf("%s destionation domain '%s': %s", configFilename, destinationDomain, err.Error())
+		}
+
+		source, found := pinResponseDomainMap[sourceDomain]
+		if !found {
+			source = make(map[string]struct{})
+		}
+
+		source[destinationDomain] = struct{}{}
+		pinResponseDomainMap[sourceDomain] = source
+	}
+
+	return pinResponseDomainMap, nil
+}
+
+func readAndValidatePinA(configDirectory string, policy Policy) (map[string]net.IP, error) {
+	configFilename := configFilenamePinA
+	pinARaw, err := readConfig(configDirectory, configFilename)
+	if err != nil {
+		return nil, err
+	}
+
+	pinA := make(map[string]net.IP)
+	for _, r := range pinARaw {
+		parts := strings.Split(r, ":")
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("%s expected '<domain>:<ip>', got %s", configFilename, r)
+		}
+
+		domain := parts[0]
+		err := policy.domainHasCorrectFormat(domain)
+		if err != nil {
+			return nil, fmt.Errorf("%s domain '%s': %s", configFilename, domain, err.Error())
+		}
+
+		netIP, err := netip.ParseAddr(parts[1])
+		if err != nil || !netIP.Is4() {
+			return nil, fmt.Errorf("%s invalid ip '%s' for domain '%s'", configFilename, parts[1], domain)
+		}
+
+		data := netIP.As4()
+		ip := net.IP{data[0], data[1], data[2], data[3]}
+
+		_, found := pinA[domain]
+		if !found {
+			pinA[domain] = ip
+		} else {
+			return nil, fmt.Errorf("%s duplicate domain '%s'", configFilename, domain)
+		}
+	}
+
+	return pinA, nil
 }
 
 func buildSuffixesSearch(TLDs []string, subdomains []string) (*suffixtrie.Node, error) {
