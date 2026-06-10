@@ -25,7 +25,7 @@ type Policy struct {
 	suffixSearchAllow    *suffixtrie.Node
 	exactSearchBlock     *suffixtrie.Node
 	suffixSearchBlock    *suffixtrie.Node
-	TLDs                 map[string]struct{}
+	knownTLDs            map[string]struct{}
 	blockIPv4            []netip.Prefix
 	blockIPv6            []netip.Prefix
 	allowIPv4            []netip.Prefix
@@ -37,38 +37,46 @@ type Policy struct {
 }
 
 func NewPolicy(configDirectory string, blockPunycode bool, pinResponseDomain bool) (*Policy, error) {
-	// TODO validate config
-	allowTLDs, err := readConfig(configDirectory, configFilenameAllowTLDs)
+	knownTLDs, err := readKnownTLDs(configDirectory)
 	if err != nil {
 		return nil, err
 	}
 
-	allowSuffixes, err := readConfig(configDirectory, configFilenameAllowSuffixes)
+	partialPolicy := Policy{
+		knownTLDs:     knownTLDs,
+		blockPunycode: blockPunycode,
+	}
+
+	allowTLDs, err := readAndValidateTLDs(configDirectory, configFilenameAllowTLDs, knownTLDs)
 	if err != nil {
 		return nil, err
 	}
 
-	allowExact, err := readConfig(configDirectory, configFilenameAllowExact)
+	allowSuffixes, err := readAndValidateSuffixes(configDirectory, configFilenameAllowSuffixes, partialPolicy)
 	if err != nil {
 		return nil, err
 	}
 
-	blockTLDs, err := readConfig(configDirectory, configFilenameDenyTLDs)
+	allowExact, err := readAndValidateExact(configDirectory, configFilenameAllowExact, partialPolicy)
 	if err != nil {
 		return nil, err
 	}
 
-	blockSuffixes, err := readConfig(configDirectory, configFilenameDenySuffixes)
+	blockTLDs, err := readAndValidateTLDs(configDirectory, configFilenameDenyTLDs, knownTLDs)
 	if err != nil {
 		return nil, err
 	}
 
-	blockExact, err := readConfig(configDirectory, configFilenameDenyExact)
+	blockSuffixes, err := readAndValidateSuffixes(configDirectory, configFilenameDenySuffixes, partialPolicy)
 	if err != nil {
 		return nil, err
 	}
 
-	// TODO verify that TLDs are valid
+	blockExact, err := readAndValidateExact(configDirectory, configFilenameDenyExact, partialPolicy)
+	if err != nil {
+		return nil, err
+	}
+
 	// TODO these could be combined into one suffix trie
 	suffixSearchAllow, err := buildSuffixesSearch(allowTLDs, allowSuffixes)
 	if err != nil {
@@ -88,20 +96,6 @@ func NewPolicy(configDirectory string, blockPunycode bool, pinResponseDomain boo
 	exactSearchBlock, err := buildDomainSearch(blockExact)
 	if err != nil {
 		return nil, err
-	}
-
-	tldList, err := readConfig(configDirectory, configFilenameKnownTLDs)
-	if err != nil {
-		return nil, err
-	}
-	TLDs := make(map[string]struct{})
-	for _, tld := range tldList {
-		expectedPrefix := "."
-		if !strings.HasPrefix(tld, expectedPrefix) {
-			return nil, fmt.Errorf("invalid TLD, needs to start with a '.': %s", tld)
-		}
-
-		TLDs[strings.TrimPrefix(tld, expectedPrefix)] = struct{}{}
 	}
 
 	ipv4BlockList, err := readConfig(configDirectory, configFilenameIPv4Deny)
@@ -221,7 +215,7 @@ func NewPolicy(configDirectory string, blockPunycode bool, pinResponseDomain boo
 		suffixSearchAllow:    suffixSearchAllow,
 		exactSearchBlock:     exactSearchBlock,
 		suffixSearchBlock:    suffixSearchBlock,
-		TLDs:                 TLDs,
+		knownTLDs:            knownTLDs,
 		blockIPv4:            blockIPv4,
 		blockIPv6:            blockIPv6,
 		allowIPv4:            allowIPv4,
@@ -231,6 +225,104 @@ func NewPolicy(configDirectory string, blockPunycode bool, pinResponseDomain boo
 		pinResponseDomainMap: pinResponseDomainMap,
 		pinA:                 pinA,
 	}, nil
+}
+
+func readKnownTLDs(configDirectory string) (map[string]struct{}, error) {
+	tldList, err := readConfig(configDirectory, configFilenameKnownTLDs)
+	if err != nil {
+		return nil, err
+	}
+
+	knownTLDs := make(map[string]struct{})
+	for _, tld := range tldList {
+		if strings.TrimSpace(tld) != tld {
+			return nil, fmt.Errorf("%s '%s' has leading or trailing whitespace", configFilenameKnownTLDs, tld)
+		}
+
+		expectedPrefix := "."
+		if !strings.HasPrefix(tld, expectedPrefix) {
+			return nil, fmt.Errorf("%s '%s' needs to start with a '.'", configFilenameKnownTLDs, tld)
+		}
+
+		tldWithoutPrefix := strings.TrimPrefix(tld, expectedPrefix)
+		if !labelRegex.MatchString(tldWithoutPrefix) {
+			return nil, fmt.Errorf("%s '%s' ", configFilenameKnownTLDs, tld)
+		}
+
+		knownTLDs[tldWithoutPrefix] = struct{}{}
+	}
+
+	return knownTLDs, nil
+}
+
+func readAndValidateTLDs(configDirectory string, filename string, knownTLDs map[string]struct{}) ([]string, error) {
+	TLDs, err := readConfig(configDirectory, filename)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, TLD := range TLDs {
+		if strings.TrimSpace(TLD) != TLD {
+			return nil, fmt.Errorf("%s '%s' has leading or trailing whitespace", filename, TLD)
+		}
+
+		expectedPrefix := "."
+		if !strings.HasPrefix(TLD, expectedPrefix) {
+			return nil, fmt.Errorf("%s '%s' needs to start with at '.'", filename, TLD)
+		}
+
+		_, found := knownTLDs[strings.TrimPrefix(TLD, expectedPrefix)]
+		if !found {
+			return nil, fmt.Errorf("%s '%s' not present in known.tld", filename, TLD)
+		}
+	}
+
+	return TLDs, nil
+}
+
+func readAndValidateSuffixes(configDirectory string, filename string, policy Policy) ([]string, error) {
+	suffixes, err := readConfig(configDirectory, filename)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, suffix := range suffixes {
+		if strings.TrimSpace(suffix) != suffix {
+			return nil, fmt.Errorf("%s '%s' has leading or trailing whitespace", filename, suffix)
+		}
+
+		if !strings.HasPrefix(suffix, ".") {
+			return nil, fmt.Errorf("%s '%s' must start with a '.'", filename, suffix)
+		}
+		domain := strings.TrimPrefix(suffix, ".")
+
+		err := policy.domainHasCorrectFormat(domain)
+		if err != nil {
+			return nil, fmt.Errorf("%s '%s': %s", filename, domain, err.Error())
+		}
+	}
+
+	return suffixes, nil
+}
+
+func readAndValidateExact(configDirectory string, filename string, policy Policy) ([]string, error) {
+	domains, err := readConfig(configDirectory, filename)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, domain := range domains {
+		if strings.TrimSpace(domain) != domain {
+			return nil, fmt.Errorf("%s '%s' has leading or trailing whitespace", filename, domain)
+		}
+
+		err := policy.domainHasCorrectFormat(domain)
+		if err != nil {
+			return nil, fmt.Errorf("%s '%s': %s", filename, domain, err.Error())
+		}
+	}
+
+	return domains, nil
 }
 
 func buildSuffixesSearch(TLDs []string, subdomains []string) (*suffixtrie.Node, error) {
@@ -390,7 +482,7 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 	}
 
 	for domain := range uniqueDomains {
-		correctFormat, reason := p.domainHasCorrectFormat(domain)
+		correctFormat, reason := p.domainHasCorrectFormatWithTrailingDot(domain)
 		if !correctFormat {
 			reasons = append(reasons, reason)
 			return false, reasons
@@ -476,7 +568,7 @@ func supportedInResponses(r RecordType) bool {
 }
 
 func (p *Policy) domainIsAllowed(domain string) (bool, FilterReason) {
-	correctlyFormatted, formatReason := p.domainHasCorrectFormat(domain)
+	correctlyFormatted, formatReason := p.domainHasCorrectFormatWithTrailingDot(domain)
 	if !correctlyFormatted {
 		return false, formatReason
 	}
@@ -509,7 +601,7 @@ func (p *Policy) domainIsAllowed(domain string) (bool, FilterReason) {
 	return false, FilterReason(reason)
 }
 
-func (p *Policy) domainHasCorrectFormat(domain string) (bool, FilterReason) {
+func (p *Policy) domainHasCorrectFormatWithTrailingDot(domain string) (bool, FilterReason) {
 	// https://www.ietf.org/rfc/rfc1035.txt
 	if len(domain) > 254 {
 		reason := fmt.Sprintf("block due to domain being too long: %d", len(domain))
@@ -521,21 +613,42 @@ func (p *Policy) domainHasCorrectFormat(domain string) (bool, FilterReason) {
 	}
 
 	domain = strings.TrimSuffix(domain, ".")
+	err := p.domainHasCorrectFormat(domain)
+	if err != nil {
+		reason := fmt.Sprintf("block: %s", err.Error())
+		return false, FilterReason(reason)
+	}
+
+	reason := fmt.Sprintf("allow due to correct format: %s", domain)
+	return true, FilterReason(reason)
+}
+
+func (p *Policy) domainHasCorrectFormat(domain string) error {
+	if strings.HasPrefix(domain, ".") {
+		return fmt.Errorf("unexpected leading '.'")
+	}
+
+	if strings.HasSuffix(domain, ".") {
+		return fmt.Errorf("unexpected trailing '.'")
+	}
+
+	// https://www.ietf.org/rfc/rfc1035.txt
+	if len(domain) > 253 {
+		return fmt.Errorf("domain is too long: %d", len(domain))
+	}
+
 	parts := strings.Split(domain, ".")
 	if len(parts) < 2 {
-		reason := fmt.Sprintf("block due to domain not having at least two parts")
-		return false, FilterReason(reason)
+		return fmt.Errorf("domain is not at least two parts")
 	}
 
 	for _, part := range parts {
 		if len(part) > 63 {
-			reason := fmt.Sprintf("block due to label too long")
-			return false, FilterReason(reason)
+			return fmt.Errorf("label is too long")
 		}
 
 		if !labelRegex.Match([]byte(part)) {
-			reason := fmt.Sprintf("block due to illegal characters in label")
-			return false, FilterReason(reason)
+			return fmt.Errorf("illegal characters in label")
 		}
 
 		// TODO check for '-' in 3,4 spot?
@@ -543,21 +656,17 @@ func (p *Policy) domainHasCorrectFormat(domain string) (bool, FilterReason) {
 
 		if p.blockPunycode {
 			if strings.HasPrefix(part, "xn--") {
-				reason := fmt.Sprintf("block due to punycode present")
-				return false, FilterReason(reason)
+				return fmt.Errorf("punycode present")
 			}
 		}
 	}
 
-	_, found := p.TLDs[parts[len(parts)-1]]
+	_, found := p.knownTLDs[parts[len(parts)-1]]
 	if !found {
-		// TODO NXDOMAIN might make more sense?
-		reason := fmt.Sprintf("block due to not a valid TLD: %s", domain)
-		return false, FilterReason(reason)
+		return fmt.Errorf("not a valid TLD")
 	}
 
-	reason := fmt.Sprintf("allow due to correct format: %s", domain)
-	return true, FilterReason(reason)
+	return nil
 }
 
 func (p *Policy) domainMatchesAllowExactly(domain string) bool {

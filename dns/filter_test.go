@@ -1,6 +1,7 @@
 package dns
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -56,5 +57,119 @@ func TestDomain(t *testing.T) {
 
 	if domainAllowList.MatchExact([]byte("")) {
 		t.Errorf("fail")
+	}
+}
+
+func TestDomainHasCorrectFormat(t *testing.T) {
+	policy := Policy{
+		blockPunycode: true,
+		knownTLDs: map[string]struct{}{
+			"com": {},
+		},
+	}
+
+	err := policy.domainHasCorrectFormat("example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = policy.domainHasCorrectFormat(".example.com")
+	if err == nil {
+		t.Fatalf("should fail")
+	}
+	expectedErr := "unexpected leading '.'"
+	if err.Error() != expectedErr {
+		t.Fatalf("expected '%s', got '%s'", expectedErr, err.Error())
+	}
+
+	err = policy.domainHasCorrectFormat("example.com.")
+	if err == nil {
+		t.Fatalf("should fail")
+	}
+	expectedErr = "unexpected trailing '.'"
+	if err.Error() != expectedErr {
+		t.Fatalf("expected '%s', got '%s'", expectedErr, err.Error())
+	}
+
+	err = policy.domainHasCorrectFormat("com")
+	if err == nil {
+		t.Fatalf("should fail")
+	}
+	expectedErr = "domain is not at least two parts"
+	if err.Error() != expectedErr {
+		t.Fatalf("expected '%s', got '%s'", expectedErr, err.Error())
+	}
+
+	sb := stringBuilderWith250Characters()
+	sb.WriteString("bbbb")
+	tooLong := sb.String()
+	err = policy.domainHasCorrectFormat(tooLong)
+	if err == nil {
+		t.Fatalf("should fail")
+	}
+	expectedErr = "domain is too long: 254"
+	if err.Error() != expectedErr {
+		t.Fatalf("expected '%s', got '%s'", expectedErr, err.Error())
+	}
+
+	sb = stringBuilderWith250Characters()
+	sb.WriteString("com")
+	almostTooLong := sb.String()
+	err = policy.domainHasCorrectFormat(almostTooLong)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sb = &strings.Builder{}
+	for i := 0; i < 64; i++ {
+		sb.WriteString("a")
+	}
+	sb.WriteString(".com")
+	tooLongLabel := sb.String()
+	err = policy.domainHasCorrectFormat(tooLongLabel)
+	if err == nil {
+		t.Fatalf("should fail")
+	}
+	expectedErr = "label is too long"
+	if err.Error() != expectedErr {
+		t.Fatalf("expected '%s', got '%s'", expectedErr, err.Error())
+	}
+
+	sb = &strings.Builder{}
+	for i := 0; i < 63; i++ {
+		sb.WriteString("a")
+	}
+	sb.WriteString(".com")
+	almostTooLongLabel := sb.String()
+	err = policy.domainHasCorrectFormat(almostTooLongLabel)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = policy.domainHasCorrectFormat("_test.com")
+	if err == nil {
+		t.Fatalf("should fail")
+	}
+	expectedErr = "illegal characters in label"
+	if err.Error() != expectedErr {
+		t.Fatalf("expected '%s', got '%s'", expectedErr, err.Error())
+	}
+
+	err = policy.domainHasCorrectFormat("xn--test.com")
+	if err == nil {
+		t.Fatalf("should fail")
+	}
+	expectedErr = "punycode present"
+	if err.Error() != expectedErr {
+		t.Fatalf("expected '%s', got '%s'", expectedErr, err.Error())
+	}
+
+	err = policy.domainHasCorrectFormat("example.org")
+	if err == nil {
+		t.Fatalf("should fail")
+	}
+	expectedErr = "not a valid TLD"
+	if err.Error() != expectedErr {
+		t.Fatalf("expected '%s', got '%s'", expectedErr, err.Error())
 	}
 }
