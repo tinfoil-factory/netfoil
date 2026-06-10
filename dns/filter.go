@@ -181,33 +181,9 @@ func NewPolicy(configDirectory string, blockPunycode bool, pinResponseDomain boo
 		pinResponseDomainMap[sourceDomain] = source
 	}
 
-	pinARaw, err := readConfig(configDirectory, configFilenamePinA)
+	pinA, err := readAndValidatePinA(configDirectory, partialPolicy)
 	if err != nil {
 		return nil, err
-	}
-
-	pinA := make(map[string]net.IP)
-	for _, r := range pinARaw {
-		parts := strings.Split(r, ":")
-		if len(parts) != 2 {
-			return nil, fmt.Errorf("invalid pin.a format: %s", r)
-		}
-
-		domain := parts[0]
-		netIP, err := netip.ParseAddr(parts[1])
-		if err != nil || !netIP.Is4() {
-			return nil, fmt.Errorf("invalid pin.a ip: %s", r)
-		}
-
-		data := netIP.As4()
-		ip := net.IP{data[0], data[1], data[2], data[3]}
-
-		_, found := pinA[domain]
-		if !found {
-			pinA[domain] = ip
-		} else {
-			return nil, fmt.Errorf("duplicate pin.a domain: %s", domain)
-		}
 	}
 
 	return &Policy{
@@ -323,6 +299,45 @@ func readAndValidateExact(configDirectory string, filename string, policy Policy
 	}
 
 	return domains, nil
+}
+
+func readAndValidatePinA(configDirectory string, policy Policy) (map[string]net.IP, error) {
+	configFilename := configFilenamePinA
+	pinARaw, err := readConfig(configDirectory, configFilename)
+	if err != nil {
+		return nil, err
+	}
+
+	pinA := make(map[string]net.IP)
+	for _, r := range pinARaw {
+		parts := strings.Split(r, ":")
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("%s expected '<domain>:<ip>', got %s", configFilename, r)
+		}
+
+		domain := parts[0]
+		err := policy.domainHasCorrectFormat(domain)
+		if err != nil {
+			return nil, fmt.Errorf("%s domain '%s': %s", configFilename, domain, err.Error())
+		}
+
+		netIP, err := netip.ParseAddr(parts[1])
+		if err != nil || !netIP.Is4() {
+			return nil, fmt.Errorf("%s invalid ip '%s' for domain '%s'", configFilename, parts[1], domain)
+		}
+
+		data := netIP.As4()
+		ip := net.IP{data[0], data[1], data[2], data[3]}
+
+		_, found := pinA[domain]
+		if !found {
+			pinA[domain] = ip
+		} else {
+			return nil, fmt.Errorf("%s duplicate domain '%s'", configFilename, domain)
+		}
+	}
+
+	return pinA, nil
 }
 
 func buildSuffixesSearch(TLDs []string, subdomains []string) (*suffixtrie.Node, error) {
