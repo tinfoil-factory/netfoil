@@ -210,6 +210,9 @@ func applySystemCallFilter(filter bool, caCertPool *x509.CertPool) error {
 
 			// @resources
 			//unix.SYS_SETRLIMIT,
+
+			// Needed when vDSO is disabled,
+			unix.SYS_CLOCK_GETRES,
 		}
 
 		if caCertPool == nil {
