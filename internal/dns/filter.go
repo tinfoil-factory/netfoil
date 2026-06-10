@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/tinfoil-factory/netfoil/suffixtrie"
+	"github.com/tinfoil-factory/netfoil/internal/suffixtrie"
 )
 
 // https://datatracker.ietf.org/doc/html/rfc921

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tinfoil-factory/netfoil/lru"
+	"github.com/tinfoil-factory/netfoil/internal/lru"
 )
 
 type workerTask struct {
