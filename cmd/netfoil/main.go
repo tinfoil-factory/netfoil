@@ -212,7 +212,7 @@ func applySystemCallFilter(filter bool, caCertPool *x509.CertPool) error {
 			//unix.SYS_SETRLIMIT,
 
 			// Needed when vDSO is disabled,
-			unix.SYS_CLOCK_GETRES,
+			unix.SYS_CLOCK_GETTIME,
 		}
 
 		if caCertPool == nil {
