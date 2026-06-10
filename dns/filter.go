@@ -158,27 +158,9 @@ func NewPolicy(configDirectory string, blockPunycode bool, pinResponseDomain boo
 		allowIPv6 = append(allowIPv6, p)
 	}
 
-	pinResponseDomainRaw, err := readConfig(configDirectory, configFilenamePinResponseDomain)
+	pinResponseDomainMap, err := readAndValidatePinResponseDomain(configDirectory, partialPolicy)
 	if err != nil {
 		return nil, err
-	}
-	pinResponseDomainMap := make(map[string]map[string]struct{})
-
-	for _, d := range pinResponseDomainRaw {
-		parts := strings.Split(d, ":")
-		if len(parts) != 2 {
-			return nil, fmt.Errorf("invalid PinResponseDomain format: %s", d)
-		}
-
-		sourceDomain := parts[0]
-		destinationDomain := parts[1]
-		source, found := pinResponseDomainMap[sourceDomain]
-		if !found {
-			source = make(map[string]struct{})
-		}
-
-		source[destinationDomain] = struct{}{}
-		pinResponseDomainMap[sourceDomain] = source
 	}
 
 	pinA, err := readAndValidatePinA(configDirectory, partialPolicy)
@@ -299,6 +281,45 @@ func readAndValidateExact(configDirectory string, filename string, policy Policy
 	}
 
 	return domains, nil
+}
+
+func readAndValidatePinResponseDomain(configDirectory string, policy Policy) (map[string]map[string]struct{}, error) {
+	configFilename := configFilenamePinResponseDomain
+	pinResponseDomainRaw, err := readConfig(configDirectory, configFilename)
+	if err != nil {
+		return nil, err
+	}
+
+	pinResponseDomainMap := make(map[string]map[string]struct{})
+	for _, d := range pinResponseDomainRaw {
+		parts := strings.Split(d, ":")
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("%s expected '<domain>:<domain>', got '%s'", configFilename, d)
+		}
+
+		sourceDomain := parts[0]
+		destinationDomain := parts[1]
+
+		err = policy.domainHasCorrectFormat(sourceDomain)
+		if err != nil {
+			return nil, fmt.Errorf("%s source domain '%s': %s", configFilename, sourceDomain, err.Error())
+		}
+
+		err = policy.domainHasCorrectFormat(destinationDomain)
+		if err != nil {
+			return nil, fmt.Errorf("%s destionation domain '%s': %s", configFilename, destinationDomain, err.Error())
+		}
+
+		source, found := pinResponseDomainMap[sourceDomain]
+		if !found {
+			source = make(map[string]struct{})
+		}
+
+		source[destinationDomain] = struct{}{}
+		pinResponseDomainMap[sourceDomain] = source
+	}
+
+	return pinResponseDomainMap, nil
 }
 
 func readAndValidatePinA(configDirectory string, policy Policy) (map[string]net.IP, error) {
