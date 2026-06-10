@@ -128,6 +128,7 @@ func (l *List[T]) MoveToFront(e *ListElement[T]) {
 		l.head.previous = e
 
 		l.head = e
+		l.head.previous = nil
 	}
 }
 
