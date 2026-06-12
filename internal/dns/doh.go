@@ -22,7 +22,7 @@ const (
 	timeout                = 20 * time.Second
 	keepAliveProbeTime     = 30 * time.Second
 	idleSessionTimeout     = 90 * time.Second
-	maxResponseHeaderBytes = 1000
+	maxResponseHeaderBytes = 2000
 )
 
 type DoHClient struct {
