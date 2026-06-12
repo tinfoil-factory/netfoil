@@ -100,6 +100,9 @@ func unmarshalInner(version uint16, buffer *bytes.Buffer) (*ECHConfig, error) {
 	if err != nil {
 		return nil, err
 	}
+	if (cipherSuitesLength % 4) != 0 {
+		return nil, fmt.Errorf("cipher suites length not divisible by 4: %d", cipherSuitesLength)
+	}
 
 	cipherSuites := make([]HPKESymmetricCipherSuite, 0)
 	for i := 0; i < int(cipherSuitesLength/4); i++ {

@@ -163,7 +163,6 @@ func TestSetFlags(t *testing.T) {
 		{Flags{TC: true}, "unexpected flag TC set"},
 		{Flags{RA: true}, "unexpected flag RA set"},
 		{Flags{Z: true}, "unexpected flag Z set"},
-		{Flags{AD: true}, "unexpected flag AD set"},
 		{Flags{CD: true}, "unexpected flag CD set"},
 		{Flags{RCODE: 1}, "unexpected non-zero RCODE 1"},
 		{Flags{RCODE: 15}, "unexpected non-zero RCODE 15"},

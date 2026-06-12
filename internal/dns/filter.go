@@ -16,7 +16,13 @@ import (
 var ipv4Null = net.IP{0, 0, 0, 0}
 var ipv6Null = net.IP{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 
-const defaultTTL = uint32(300)
+type ipversion int
+
+const (
+	defaultTTL           = uint32(300)
+	IPv4       ipversion = 4
+	IPv6       ipversion = 6
+)
 
 var labelRegex = regexp.MustCompile("^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
 
@@ -26,8 +32,8 @@ type Policy struct {
 	exactSearchBlock     *suffixtrie.Node
 	suffixSearchBlock    *suffixtrie.Node
 	knownTLDs            map[string]struct{}
-	blockIPv4            []netip.Prefix
-	blockIPv6            []netip.Prefix
+	denyIPv4             []netip.Prefix
+	denyIPv6             []netip.Prefix
 	allowIPv4            []netip.Prefix
 	allowIPv6            []netip.Prefix
 	blockPunycode        bool
@@ -98,64 +104,24 @@ func NewPolicy(configDirectory string, blockPunycode bool, pinResponseDomain boo
 		return nil, err
 	}
 
-	ipv4BlockList, err := readConfig(configDirectory, configFilenameIPv4Deny)
+	denyIPv4, err := readAndValidateIP(configDirectory, configFilenameIPv4Deny, IPv4)
 	if err != nil {
 		return nil, err
 	}
 
-	blockIPv4 := make([]netip.Prefix, 0)
-	for _, ip := range ipv4BlockList {
-		p, err := netip.ParsePrefix(ip)
-		if err != nil {
-			return nil, err
-		}
-
-		blockIPv4 = append(blockIPv4, p)
-	}
-
-	ipv4AllowList, err := readConfig(configDirectory, configFilenameIPv4Allow)
+	allowIPv4, err := readAndValidateIP(configDirectory, configFilenameIPv4Allow, IPv4)
 	if err != nil {
 		return nil, err
 	}
 
-	allowIPv4 := make([]netip.Prefix, 0)
-	for _, ip := range ipv4AllowList {
-		p, err := netip.ParsePrefix(ip)
-		if err != nil {
-			return nil, err
-		}
-
-		allowIPv4 = append(allowIPv4, p)
-	}
-
-	ipv6BlockList, err := readConfig(configDirectory, configFilenameIPv6Deny)
+	denyIPv6, err := readAndValidateIP(configDirectory, configFilenameIPv6Deny, IPv6)
 	if err != nil {
 		return nil, err
 	}
 
-	blockIPv6 := make([]netip.Prefix, 0)
-	for _, ip := range ipv6BlockList {
-		p, err := netip.ParsePrefix(ip)
-		if err != nil {
-			return nil, err
-		}
-
-		blockIPv6 = append(blockIPv6, p)
-	}
-
-	ipv6AllowList, err := readConfig(configDirectory, configFilenameIPv6Allow)
+	allowIPv6, err := readAndValidateIP(configDirectory, configFilenameIPv6Allow, IPv6)
 	if err != nil {
 		return nil, err
-	}
-
-	allowIPv6 := make([]netip.Prefix, 0)
-	for _, ip := range ipv6AllowList {
-		p, err := netip.ParsePrefix(ip)
-		if err != nil {
-			return nil, err
-		}
-
-		allowIPv6 = append(allowIPv6, p)
 	}
 
 	pinResponseDomainMap, err := readAndValidatePinResponseDomain(configDirectory, partialPolicy)
@@ -174,8 +140,8 @@ func NewPolicy(configDirectory string, blockPunycode bool, pinResponseDomain boo
 		exactSearchBlock:     exactSearchBlock,
 		suffixSearchBlock:    suffixSearchBlock,
 		knownTLDs:            knownTLDs,
-		blockIPv4:            blockIPv4,
-		blockIPv6:            blockIPv6,
+		denyIPv4:             denyIPv4,
+		denyIPv6:             denyIPv6,
 		allowIPv4:            allowIPv4,
 		allowIPv6:            allowIPv6,
 		blockPunycode:        blockPunycode,
@@ -283,6 +249,38 @@ func readAndValidateExact(configDirectory string, filename string, policy Policy
 	return domains, nil
 }
 
+func readAndValidateIP(configDirectory string, filename string, ipVersion ipversion) ([]netip.Prefix, error) {
+	ipListRaw, err := readConfig(configDirectory, filename)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]netip.Prefix, 0)
+	for _, ip := range ipListRaw {
+		p, err := netip.ParsePrefix(ip)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %s", filename, err.Error())
+		}
+
+		switch ipVersion {
+		case IPv4:
+			if !p.Addr().Is4() {
+				return nil, fmt.Errorf("%s '%s': need to be IPv4", filename, p.String())
+			}
+		case IPv6:
+			if !p.Addr().Is6() {
+				return nil, fmt.Errorf("%s '%s': need to be IPv6", filename, p.String())
+			}
+		default:
+			return nil, fmt.Errorf("%s unexpected IP version %d", filename, ipVersion)
+		}
+
+		result = append(result, p)
+	}
+
+	return result, nil
+}
+
 func readAndValidatePinResponseDomain(configDirectory string, policy Policy) (map[string]map[string]struct{}, error) {
 	configFilename := configFilenamePinResponseDomain
 	pinResponseDomainRaw, err := readConfig(configDirectory, configFilename)
@@ -388,19 +386,19 @@ func (p *Policy) queryIsAllowed(question Question) (bool, []FilterReason) {
 	reasons := make([]FilterReason, 0)
 
 	if !supportedInRequests(question.Type) {
-		reason := fmt.Sprintf("block request type: %d", question.Type)
+		reason := fmt.Sprintf("deny request type: %d", question.Type)
 		reasons = append(reasons, FilterReason(reason))
 		return false, reasons
 	}
 
 	if question.Type == RecordTypeA && len(p.allowIPv4) == 0 {
-		reason := fmt.Sprintf("block request type: %d, no allowed IPv4", question.Type)
+		reason := fmt.Sprintf("deny request type: %d, no allowed IPv4", question.Type)
 		reasons = append(reasons, FilterReason(reason))
 		return false, reasons
 	}
 
 	if question.Type == RecordTypeAAAA && len(p.allowIPv6) == 0 {
-		reason := fmt.Sprintf("block request type: %d, no allowed IPv6", question.Type)
+		reason := fmt.Sprintf("deny request type: %d, no allowed IPv6", question.Type)
 		reasons = append(reasons, FilterReason(reason))
 		return false, reasons
 	}
@@ -410,7 +408,7 @@ func (p *Policy) queryIsAllowed(question Question) (bool, []FilterReason) {
 	allowed, domainReason := p.domainIsAllowed(domain)
 	reasons = append(reasons, domainReason)
 	if !allowed {
-		reason := fmt.Sprintf("block query")
+		reason := fmt.Sprintf("deny query")
 		reasons = append(reasons, FilterReason(reason))
 		return false, reasons
 	}
@@ -435,14 +433,14 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 
 	for _, answer := range response.Answers {
 		if !supportedInResponses(answer.Type) {
-			reason := fmt.Sprintf("block due to response type: %d", answer.Type)
+			reason := fmt.Sprintf("deny due to response type: %d", answer.Type)
 			reasons = append(reasons, FilterReason(reason))
 			return false, reasons
 		}
 
 		if answer.Type == RecordTypeA {
 			if requestType != RecordTypeA {
-				reason := fmt.Sprintf("block due to A response not matching request type 1: %d", answer.Type)
+				reason := fmt.Sprintf("deny due to A response not matching request type 1: %d", answer.Type)
 				reasons = append(reasons, FilterReason(reason))
 				return false, reasons
 			}
@@ -453,7 +451,7 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 
 		if answer.Type == RecordTypeCNAME {
 			if !(requestType == RecordTypeA || requestType == RecordTypeAAAA || requestType == RecordTypeHTTPS) {
-				reason := fmt.Sprintf("block due to CNAME response not matching request type 1 or 28: %d", answer.Type)
+				reason := fmt.Sprintf("deny due to CNAME response not matching request type 1 or 28: %d", answer.Type)
 				reasons = append(reasons, FilterReason(reason))
 				return false, reasons
 			}
@@ -466,7 +464,7 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 
 		if answer.Type == RecordTypeAAAA {
 			if requestType != RecordTypeAAAA {
-				reason := fmt.Sprintf("block due to AAAA response not matching request type 28: %d", answer.Type)
+				reason := fmt.Sprintf("deny due to AAAA response not matching request type 28: %d", answer.Type)
 				reasons = append(reasons, FilterReason(reason))
 				return false, reasons
 			}
@@ -477,7 +475,7 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 
 		if answer.Type == RecordTypeHTTPS {
 			if requestType != RecordTypeHTTPS {
-				reason := fmt.Sprintf("block due to HTTPS response not matching request type 65: %d", answer.Type)
+				reason := fmt.Sprintf("deny due to HTTPS response not matching request type 65: %d", answer.Type)
 				reasons = append(reasons, FilterReason(reason))
 				return false, reasons
 			}
@@ -541,7 +539,7 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 			}
 
 			if !domainAllowed {
-				reason := fmt.Sprintf("block due to response domain: %s:%s", sourceDomain, destinationDomain)
+				reason := fmt.Sprintf("deny due to response domain: %s:%s", sourceDomain, destinationDomain)
 				reasons = append(reasons, FilterReason(reason))
 				return false, reasons
 			}
@@ -553,7 +551,7 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 		reasons = append(reasons, ipv4Reason)
 
 		if !ipv4Allowed {
-			reason := fmt.Sprintf("block due to response IPv4: %s", ipv4)
+			reason := fmt.Sprintf("deny due to response IPv4: %s", ipv4)
 			reasons = append(reasons, FilterReason(reason))
 			return false, reasons
 		}
@@ -564,7 +562,7 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 		reasons = append(reasons, ipv6Reason)
 
 		if !ipv6Allowed {
-			reason := fmt.Sprintf("block due to response IPv6: %s", ipv6)
+			reason := fmt.Sprintf("deny due to response IPv6: %s", ipv6)
 			reasons = append(reasons, FilterReason(reason))
 			return false, reasons
 		}
@@ -612,16 +610,16 @@ func (p *Policy) domainIsAllowed(domain string) (bool, FilterReason) {
 	domain = strings.TrimSuffix(domain, ".")
 
 	if p.domainMatchesBlockExactly(domain) {
-		reason := fmt.Sprintf("block due to exact blocklist: %s", domain)
+		reason := fmt.Sprintf("deny due to exact denylist: %s", domain)
 		return false, FilterReason(reason)
 	}
 
 	if p.domainMatchesBlockSuffix(domain) {
-		reason := fmt.Sprintf("block due to suffix blocklist: %s", domain)
+		reason := fmt.Sprintf("deny due to suffix denylist: %s", domain)
 		return false, FilterReason(reason)
 	}
 
-	// all block rules done, move to explicit allow
+	// all deny rules done, move to explicit allow
 
 	if p.domainMatchesAllowExactly(domain) {
 		reason := fmt.Sprintf("allow due to exact allowlist: %s", domain)
@@ -633,25 +631,25 @@ func (p *Policy) domainIsAllowed(domain string) (bool, FilterReason) {
 		return true, FilterReason(reason)
 	}
 
-	reason := fmt.Sprintf("block because no allow rule matched: %s", domain)
+	reason := fmt.Sprintf("deny because no allow rule matched: %s", domain)
 	return false, FilterReason(reason)
 }
 
 func (p *Policy) domainHasCorrectFormatWithTrailingDot(domain string) (bool, FilterReason) {
 	// https://www.ietf.org/rfc/rfc1035.txt
 	if len(domain) > 254 {
-		reason := fmt.Sprintf("block due to domain being too long: %d", len(domain))
+		reason := fmt.Sprintf("deny due to domain being too long: %d", len(domain))
 		return false, FilterReason(reason)
 	}
 
 	if !strings.HasSuffix(domain, ".") {
-		return false, "block due to missing trailing '.'"
+		return false, "deny due to missing trailing '.'"
 	}
 
 	domain = strings.TrimSuffix(domain, ".")
 	err := p.domainHasCorrectFormat(domain)
 	if err != nil {
-		reason := fmt.Sprintf("block: %s", err.Error())
+		reason := fmt.Sprintf("deny: %s", err.Error())
 		return false, FilterReason(reason)
 	}
 
@@ -724,19 +722,19 @@ func (p *Policy) domainMatchesBlockSuffix(domain string) bool {
 func (p *Policy) ipv4IsAllowed(ipString string) (bool, FilterReason) {
 	ip, err := netip.ParseAddr(ipString)
 	if err != nil {
-		reason := fmt.Sprintf("block failed to parse IPv4: %s", ipString)
+		reason := fmt.Sprintf("deny failed to parse IPv4: %s", ipString)
 		return false, FilterReason(reason)
 	}
 
 	if !ip.Is4() {
-		reason := fmt.Sprintf("block not IPv4: %s", ipString)
+		reason := fmt.Sprintf("deny not IPv4: %s", ipString)
 		return false, FilterReason(reason)
 	}
 
 	// TODO make more efficient
-	for _, prefix := range p.blockIPv4 {
+	for _, prefix := range p.denyIPv4 {
 		if prefix.Contains(ip) {
-			reason := fmt.Sprintf("block due to IPv4 blocklist: %s", ipString)
+			reason := fmt.Sprintf("deny due to IPv4 denylist: %s", ipString)
 			return false, FilterReason(reason)
 		}
 	}
@@ -748,26 +746,26 @@ func (p *Policy) ipv4IsAllowed(ipString string) (bool, FilterReason) {
 		}
 	}
 
-	reason := fmt.Sprintf("block because no IPv4 rule matched: %s", ip)
+	reason := fmt.Sprintf("deny because no IPv4 rule matched: %s", ip)
 	return false, FilterReason(reason)
 }
 
 func (p *Policy) ipv6IsAllowed(ipString string) (bool, FilterReason) {
 	ip, err := netip.ParseAddr(ipString)
 	if err != nil {
-		reason := fmt.Sprintf("block failed to parse IPv6: %s", ipString)
+		reason := fmt.Sprintf("deny failed to parse IPv6: %s", ipString)
 		return false, FilterReason(reason)
 	}
 
 	if !ip.Is6() {
-		reason := fmt.Sprintf("block not IPv6: %s", ipString)
+		reason := fmt.Sprintf("deny not IPv6: %s", ipString)
 		return false, FilterReason(reason)
 	}
 
 	// TODO make more efficient
-	for _, prefix := range p.blockIPv6 {
+	for _, prefix := range p.denyIPv6 {
 		if prefix.Contains(ip) {
-			reason := fmt.Sprintf("block due to IPv6 blocklist: %s", ipString)
+			reason := fmt.Sprintf("deny due to IPv6 denylist: %s", ipString)
 			return false, FilterReason(reason)
 		}
 	}
@@ -779,7 +777,7 @@ func (p *Policy) ipv6IsAllowed(ipString string) (bool, FilterReason) {
 		}
 	}
 
-	reason := fmt.Sprintf("block because no IPv6 rule matched: %s", ip)
+	reason := fmt.Sprintf("deny because no IPv6 rule matched: %s", ip)
 	return false, FilterReason(reason)
 }
 

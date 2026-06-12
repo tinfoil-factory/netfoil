@@ -58,9 +58,8 @@ func UnmarshalRequest(data []byte) (*Request, error) {
 		return nil, fmt.Errorf("unexpected flag Z set")
 	}
 
-	if flags.AD == true {
-		return nil, fmt.Errorf("unexpected flag AD set")
-	}
+	// Allow AD to be set, but clear it since netfoil does not support it
+	flags.AD = false
 
 	if flags.CD == true {
 		return nil, fmt.Errorf("unexpected flag CD set")

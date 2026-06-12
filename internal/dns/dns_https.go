@@ -290,11 +290,10 @@ func unmarshalHTTPSRecord(data []byte) (*HTTPSRecord, error) {
 	return result, nil
 }
 
-// TODO remove copying
 func readALPN(data []byte) ([]string, error) {
 	p := bytes.NewBuffer(data)
-	parts := make([]string, 0)
-
+	alpnSet := make(map[string]struct{})
+	result := make([]string, 0)
 	for {
 		if p.Len() == 0 {
 			break
@@ -303,10 +302,28 @@ func readALPN(data []byte) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		parts = append(parts, string(part))
+
+		alpn := string(part)
+		switch alpn {
+		case "h2":
+			_, found := alpnSet[alpn]
+			if !found {
+				result = append(result, alpn)
+				alpnSet[alpn] = struct{}{}
+			}
+		case "h3":
+			_, found := alpnSet[alpn]
+			if !found {
+				result = append(result, alpn)
+				alpnSet[alpn] = struct{}{}
+			}
+		default:
+			// Ignore all other values: it's safer to ignore rather than fail since HTTPS RR
+			// is used to indicate HSTS like behavior according to RFC 9460, section 9.5
+		}
 	}
 
-	return parts, nil
+	return result, nil
 }
 
 func readIPv4(data []byte) ([]net.IP, error) {
