@@ -6,6 +6,7 @@ include <tunables/global>
   # /etc/apparmor.d/abstractions/base
   include <abstractions/base>
   network inet tcp,
+  network inet6 tcp,
   network inet udp,
  
   /etc/netfoil/* r,
