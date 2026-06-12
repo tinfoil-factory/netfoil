@@ -48,6 +48,25 @@ type RecordType uint16
 type ClassType uint16
 type ResponseCode byte
 
+func (r ResponseCode) Name() string {
+	switch r {
+	case ResponseCodeNoError:
+		return "NoError"
+	case ResponseCodeFormatError:
+		return "FormErr"
+	case ResponseCodeServFail:
+		return "ServFail"
+	case ResponseCodeNXDomain:
+		return "NXDomain"
+	case ResponseCodeNotImp:
+		return "NotImp"
+	case ResponseCodeRefused:
+		return "Refused"
+	default:
+		return fmt.Sprintf("%d", r)
+	}
+}
+
 const (
 	// RecordTypeA etc https://en.wikipedia.org/wiki/List_of_DNS_record_types
 	RecordTypeA     RecordType = 1

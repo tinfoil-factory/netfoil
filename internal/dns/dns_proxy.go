@@ -160,7 +160,7 @@ func logResult(config *Config, result workerResult) {
 
 		fmt.Printf("  cache hit: %t, external request: %t, pinned: %t\n", result.cacheHit, result.externalRequest, result.pinned)
 		if result.response != nil {
-			fmt.Printf("  response [%d]\n", result.response.Flags.RCODE)
+			fmt.Printf("  response [%s]\n", result.response.Flags.RCODE.Name())
 			for _, answer := range result.response.Answers {
 				fmt.Printf("    name: %s\n", answer.Name)
 				fmt.Printf("      type: %d\n", answer.Type)
