@@ -357,7 +357,7 @@ func (w *worker) process(workerTask *workerTask) (processResponse, error) {
 					}
 
 					result.marshalledResponse = serverFailure
-					return result, err
+					return result, fmt.Errorf("server failure %s %s: %w", request.Question.Type.Name(), request.Question.Name, err)
 				}
 
 				// TODO responses without at TTL will not be evicted from the cache, so not caching it for now
