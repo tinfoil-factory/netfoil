@@ -19,9 +19,10 @@ import (
 // https://datatracker.ietf.org/doc/html/rfc8484
 
 const (
-	timeout            = 20 * time.Second
-	keepAliveProbeTime = 30 * time.Second
-	idleSessionTimeout = 90 * time.Second
+	timeout                = 20 * time.Second
+	keepAliveProbeTime     = 30 * time.Second
+	idleSessionTimeout     = 90 * time.Second
+	maxResponseHeaderBytes = 1000
 )
 
 type DoHClient struct {
@@ -121,8 +122,11 @@ func NewDoHClient(dohURL string, DoHIP netip.Addr, caCertPool *x509.CertPool) (*
 			}
 			return dialer.DialContext(ctx, network, addr)
 		},
-		TLSClientConfig: tlsConfig,
-		IdleConnTimeout: idleSessionTimeout,
+		TLSClientConfig:        tlsConfig,
+		IdleConnTimeout:        idleSessionTimeout,
+		ResponseHeaderTimeout:  timeout,
+		TLSHandshakeTimeout:    timeout,
+		MaxResponseHeaderBytes: maxResponseHeaderBytes,
 	}
 
 	client := http.Client{
