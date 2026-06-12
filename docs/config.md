@@ -31,7 +31,7 @@ Uses the specified file as the Certificate Authority for DoH.
 
 - *Required*: no
 - *Default*: not set
-- *Example*: `/etc/pki/ca-trust/extracted/pem/directory-hash/DigiCert_Global_Root_G2.pem`
+- *Example*: `/etc/ssl/certs/SSL.com_Root_Certification_Authority_ECC.pem`
 
 ## Config file
 Located in `<CONFIG DIRECTORY>/config`.
