@@ -23,12 +23,12 @@ func TestHTTPS(t *testing.T) {
 		t.Fatal("target name should be empty")
 	}
 
-	if record.ALPN[0] == "h2" {
-		t.Fatalf("alpn does not match, expected 'h2', got %s", record.ALPN[0])
+	if record.ALPN[0] != "h3" {
+		t.Fatalf("alpn does not match, expected 'h3', got %s", record.ALPN[0])
 	}
 
-	if record.ALPN[1] == "h3" {
-		t.Fatalf("alpn does not match, expected 'h2', got %s", record.ALPN[0])
+	if record.ALPN[1] != "h2" {
+		t.Fatalf("alpn does not match, expected 'h2', got %s", record.ALPN[1])
 	}
 
 	expectedIPv4 := "104.21.32.39"
