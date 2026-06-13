@@ -279,7 +279,8 @@ func unmarshalHTTPSRecord(data []byte) (*HTTPSRecord, error) {
 			}
 			result.IPv6Hint = ipv6
 		default:
-			return nil, fmt.Errorf("invalid 65 key: %d", key)
+			// Ignore all other values: it's safer to ignore rather than fail since HTTPS RR
+			// is used to indicate HSTS like behavior according to RFC 9460, section 9.5
 		}
 	}
 
