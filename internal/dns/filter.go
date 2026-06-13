@@ -546,7 +546,7 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 		uniqueDomains[domain.DestinationDomain] = struct{}{}
 	}
 
-	for domain, _ := range ipDomains {
+	for domain := range ipDomains {
 		uniqueDomains[domain] = struct{}{}
 	}
 
