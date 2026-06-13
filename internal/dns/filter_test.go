@@ -187,7 +187,10 @@ func TestCorrectCNAMEChain(t *testing.T) {
 	cnames["i.com"] = "j.com"
 	cnames["j.com"] = "k.com"
 
-	err := correctCNAMEChain(cnames, "a.com", []string{"k.com"})
+	end := make(map[string]struct{})
+	end["k.com"] = struct{}{}
+
+	err := correctCNAMEChain(cnames, "a.com", end)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +202,10 @@ func TestUnrelatedCNAMERecords(t *testing.T) {
 	cnames["b.com"] = "c.com"
 	cnames["k.com"] = "l.com"
 
-	err := correctCNAMEChain(cnames, "a.com", []string{"c.com"})
+	end := make(map[string]struct{})
+	end["c.com"] = struct{}{}
+
+	err := correctCNAMEChain(cnames, "a.com", end)
 	if err == nil {
 		t.Fatalf("should fail")
 	}
@@ -224,7 +230,10 @@ func TestTooLongCNAMEChain(t *testing.T) {
 	cnames["j.com"] = "k.com"
 	cnames["k.com"] = "l.com"
 
-	err := correctCNAMEChain(cnames, "a.com", []string{"l.com"})
+	end := make(map[string]struct{})
+	end["l.com"] = struct{}{}
+
+	err := correctCNAMEChain(cnames, "a.com", end)
 	if err == nil {
 		t.Fatalf("should fail")
 	}
@@ -241,7 +250,10 @@ func TestLoopInCNAMEChain(t *testing.T) {
 	cnames["b.com"] = "a.com"
 	cnames["d.com"] = "e.com"
 
-	err := correctCNAMEChain(cnames, "a.com", []string{"b.com"})
+	end := make(map[string]struct{})
+	end["b.com"] = struct{}{}
+
+	err := correctCNAMEChain(cnames, "a.com", end)
 	if err == nil {
 		t.Fatalf("should fail")
 	}
