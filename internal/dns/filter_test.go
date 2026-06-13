@@ -173,3 +173,80 @@ func TestDomainHasCorrectFormat(t *testing.T) {
 		t.Fatalf("expected '%s', got '%s'", expectedErr, err.Error())
 	}
 }
+
+func TestCorrectCNAMEChain(t *testing.T) {
+	var cnames = make(map[string]string)
+	cnames["a.com"] = "b.com"
+	cnames["b.com"] = "c.com"
+	cnames["c.com"] = "d.com"
+	cnames["d.com"] = "e.com"
+	cnames["e.com"] = "f.com"
+	cnames["f.com"] = "g.com"
+	cnames["g.com"] = "h.com"
+	cnames["h.com"] = "i.com"
+	cnames["i.com"] = "j.com"
+	cnames["j.com"] = "k.com"
+
+	err := correctCNAMEChain(cnames, "a.com", []string{"k.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUnrelatedCNAMERecords(t *testing.T) {
+	var cnames = make(map[string]string)
+	cnames["a.com"] = "b.com"
+	cnames["b.com"] = "c.com"
+	cnames["k.com"] = "l.com"
+
+	err := correctCNAMEChain(cnames, "a.com", []string{"c.com"})
+	if err == nil {
+		t.Fatalf("should fail")
+	}
+
+	expectedErr := "incomplete CNAME chain"
+	if err.Error() != expectedErr {
+		t.Fatalf("expected '%s', got '%s'", expectedErr, err.Error())
+	}
+}
+
+func TestTooLongCNAMEChain(t *testing.T) {
+	var cnames = make(map[string]string)
+	cnames["a.com"] = "b.com"
+	cnames["b.com"] = "c.com"
+	cnames["c.com"] = "d.com"
+	cnames["d.com"] = "e.com"
+	cnames["e.com"] = "f.com"
+	cnames["f.com"] = "g.com"
+	cnames["g.com"] = "h.com"
+	cnames["h.com"] = "i.com"
+	cnames["i.com"] = "j.com"
+	cnames["j.com"] = "k.com"
+	cnames["k.com"] = "l.com"
+
+	err := correctCNAMEChain(cnames, "a.com", []string{"l.com"})
+	if err == nil {
+		t.Fatalf("should fail")
+	}
+
+	expectedErr := "too many CNAME records"
+	if err.Error() != expectedErr {
+		t.Fatalf("expected '%s', got '%s'", expectedErr, err.Error())
+	}
+}
+
+func TestLoopInCNAMEChain(t *testing.T) {
+	var cnames = make(map[string]string)
+	cnames["a.com"] = "b.com"
+	cnames["b.com"] = "a.com"
+	cnames["d.com"] = "e.com"
+
+	err := correctCNAMEChain(cnames, "a.com", []string{"b.com"})
+	if err == nil {
+		t.Fatalf("should fail")
+	}
+	expectedErr := "loop in CNAME chain"
+	if err.Error() != expectedErr {
+		t.Fatalf("expected '%s', got '%s'", expectedErr, err.Error())
+	}
+}

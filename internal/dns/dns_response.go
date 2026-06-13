@@ -7,6 +7,8 @@ import (
 	"net"
 )
 
+const maxNumberOfCnameRecords = 10
+
 func MarshalResponse(request *Request, response *Response) ([]byte, error) {
 	var numberOfAnswers uint16
 	var rcode ResponseCode
@@ -148,6 +150,14 @@ func UnmarshalResponse(data []byte) (*Response, error) {
 
 	flags := UnmarshalFlags(header.Flags)
 
+	if !(flags.RCODE == ResponseCodeNoError || flags.RCODE == ResponseCodeNXDomain) {
+		return nil, fmt.Errorf("unexpected response code %s", flags.RCODE.Name())
+	}
+
+	if flags.TC {
+		return nil, fmt.Errorf("TC not allowed in response")
+	}
+
 	// https://datatracker.ietf.org/doc/html/rfc1035#section-4.1.2
 	questions := make([]Question, 0)
 	for i := 0; i < int(header.NumberOfQuestions); i++ {
@@ -177,8 +187,9 @@ func UnmarshalResponse(data []byte) (*Response, error) {
 
 	// https://datatracker.ietf.org/doc/html/rfc1035#section-4.1.3
 	answers := make([]Answer, 0)
+	cnames := make(map[string]struct{})
 	for i := 0; i < int(header.NumberOfAnswers); i++ {
-		question, err := readDomain(data, p)
+		name, err := readDomain(data, p)
 		if err != nil {
 			return nil, err
 		}
@@ -207,7 +218,7 @@ func UnmarshalResponse(data []byte) (*Response, error) {
 		}
 
 		a := Answer{
-			Name:  question,
+			Name:  name,
 			Type:  t,
 			Class: class,
 			TTL:   ttl,
@@ -245,9 +256,22 @@ func UnmarshalResponse(data []byte) (*Response, error) {
 				return nil, fmt.Errorf("invalid CNAME record")
 			}
 			a.CNAME = domain
+
+			_, found := cnames[name]
+			if found {
+				return nil, fmt.Errorf("duplicate CNAME record")
+			}
+
+			if len(cnames) > maxNumberOfCnameRecords {
+				return nil, fmt.Errorf("too many CNAME records")
+			}
 		}
 
 		answers = append(answers, a)
+	}
+
+	if flags.RCODE != ResponseCodeNoError && len(answers) > 0 {
+		return nil, fmt.Errorf("answers in a response with error %s", flags.RCODE.Name())
 	}
 
 	// FIXME consume authority sections as well

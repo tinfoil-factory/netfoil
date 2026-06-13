@@ -424,12 +424,24 @@ type DomainPair struct {
 }
 
 func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, response *Response) (bool, []FilterReason) {
+	reasons := make([]FilterReason, 0)
+	if len(response.Answers) == 0 {
+		if response.Flags.RCODE == ResponseCodeNoError || response.Flags.RCODE == ResponseCodeNXDomain {
+			reason := fmt.Sprintf("allow response")
+			reasons = append(reasons, FilterReason(reason))
+			return true, reasons
+		}
+
+		reason := fmt.Sprintf("deny response due to unexpected error code %s", response.Flags.RCODE.Name())
+		reasons = append(reasons, FilterReason(reason))
+		return false, reasons
+	}
+
 	domainPairs := make([]DomainPair, 0)
 	ipDomains := make([]string, 0)
 	ipv4s := make(map[string]struct{})
 	ipv6s := make(map[string]struct{})
-
-	reasons := make([]FilterReason, 0)
+	cnames := make(map[string]string)
 
 	for _, answer := range response.Answers {
 		if !supportedInResponses(answer.Type) {
@@ -450,11 +462,19 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 		}
 
 		if answer.Type == RecordTypeCNAME {
-			if !(requestType == RecordTypeA || requestType == RecordTypeAAAA || requestType == RecordTypeHTTPS) {
+			if !(requestType == RecordTypeA || requestType == RecordTypeAAAA) {
 				reason := fmt.Sprintf("deny due to CNAME response not matching request type 1 or 28: %d", answer.Type)
 				reasons = append(reasons, FilterReason(reason))
 				return false, reasons
 			}
+
+			_, found := cnames[answer.Name]
+			if found {
+				reason := fmt.Sprintf("deny due to duplicate CNAME records")
+				reasons = append(reasons, FilterReason(reason))
+				return false, reasons
+			}
+			cnames[answer.Name] = answer.CNAME
 
 			domainPairs = append(domainPairs, DomainPair{
 				SourceDomain:      answer.Name,
@@ -502,6 +522,21 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 					DestinationDomain: echConfig.PublicName + ".",
 				})
 			}
+		}
+	}
+
+	if len(ipDomains) > 1 {
+		reason := fmt.Sprintf("deny due to more than one domain with IPs")
+		reasons = append(reasons, FilterReason(reason))
+		return false, reasons
+	}
+
+	if len(cnames) > 0 {
+		err := correctCNAMEChain(cnames, questionName, ipDomains)
+		if err != nil {
+			reason := FilterReason(err.Error())
+			reasons = append(reasons, reason)
+			return false, reasons
 		}
 	}
 
@@ -571,6 +606,39 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 	reason := fmt.Sprintf("allow response")
 	reasons = append(reasons, FilterReason(reason))
 	return true, reasons
+}
+
+func correctCNAMEChain(cnames map[string]string, start string, end []string) error {
+	if len(cnames) > maxNumberOfCnameRecords {
+		return fmt.Errorf("too many CNAME records")
+	}
+
+	currentDomain := start
+	visited := make(map[string]struct{})
+	for i := 0; i < len(cnames); i++ {
+		_, alreadyVisited := visited[currentDomain]
+		if alreadyVisited {
+			return fmt.Errorf("loop in CNAME chain")
+		}
+		visited[currentDomain] = struct{}{}
+
+		entry, found := cnames[currentDomain]
+		if !found {
+			return fmt.Errorf("incomplete CNAME chain")
+		}
+
+		currentDomain = entry
+	}
+
+	if len(end) != 1 {
+		return fmt.Errorf("missing IP record")
+	}
+
+	if currentDomain != end[0] {
+		return fmt.Errorf("incomplete CNAME chain, missing IP record")
+	}
+
+	return nil
 }
 
 func supportedRequest(query *Request) bool {
