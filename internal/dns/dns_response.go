@@ -261,6 +261,7 @@ func UnmarshalResponse(data []byte) (*Response, error) {
 			if found {
 				return nil, fmt.Errorf("duplicate CNAME record")
 			}
+			cnames[name] = struct{}{}
 
 			if len(cnames) > maxNumberOfCnameRecords {
 				return nil, fmt.Errorf("too many CNAME records")

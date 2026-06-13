@@ -438,7 +438,7 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 	}
 
 	domainPairs := make([]DomainPair, 0)
-	ipDomains := make([]string, 0)
+	ipDomains := make(map[string]struct{})
 	ipv4s := make(map[string]struct{})
 	ipv6s := make(map[string]struct{})
 	cnames := make(map[string]string)
@@ -458,7 +458,7 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 			}
 
 			ipv4s[answer.IPv4.String()] = struct{}{}
-			ipDomains = append(ipDomains, answer.Name)
+			ipDomains[answer.Name] = struct{}{}
 		}
 
 		if answer.Type == RecordTypeCNAME {
@@ -490,7 +490,7 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 			}
 
 			ipv6s[answer.IPv6.String()] = struct{}{}
-			ipDomains = append(ipDomains, answer.Name)
+			ipDomains[answer.Name] = struct{}{}
 		}
 
 		if answer.Type == RecordTypeHTTPS {
@@ -546,7 +546,7 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 		uniqueDomains[domain.DestinationDomain] = struct{}{}
 	}
 
-	for _, domain := range ipDomains {
+	for domain, _ := range ipDomains {
 		uniqueDomains[domain] = struct{}{}
 	}
 
@@ -608,7 +608,7 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 	return true, reasons
 }
 
-func correctCNAMEChain(cnames map[string]string, start string, end []string) error {
+func correctCNAMEChain(cnames map[string]string, start string, end map[string]struct{}) error {
 	if len(cnames) > maxNumberOfCnameRecords {
 		return fmt.Errorf("too many CNAME records")
 	}
@@ -634,7 +634,8 @@ func correctCNAMEChain(cnames map[string]string, start string, end []string) err
 		return fmt.Errorf("missing IP record")
 	}
 
-	if currentDomain != end[0] {
+	_, found := end[currentDomain]
+	if !found {
 		return fmt.Errorf("incomplete CNAME chain, missing IP record")
 	}
 
