@@ -850,20 +850,6 @@ func (p *Policy) ipv6IsAllowed(ipString string) (bool, FilterReason) {
 	return false, FilterReason(reason)
 }
 
-func generateBlockResponse() *Response {
-	var response *Response
-	flags := Flags{
-		RCODE: ResponseCodeNXDomain,
-	}
-
-	response = &Response{
-		Flags:   flags,
-		Answers: nil,
-	}
-
-	return response
-}
-
 func generateAResponse(question *Question, ip net.IP) *Response {
 	domain := question.Name
 	recordType := question.Type

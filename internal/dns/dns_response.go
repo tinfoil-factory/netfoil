@@ -7,26 +7,52 @@ import (
 	"net"
 )
 
-const maxNumberOfCnameRecords = 10
+const (
+	maxNumberOfCnameRecords = 10
+	headerLength            = 12
+)
 
 func MarshalResponse(request *Request, response *Response) ([]byte, error) {
-	var numberOfAnswers uint16
-	var rcode ResponseCode
-
-	// FIXME serialize response as is
 	q := request.Question
-	if q.Type == RecordTypeA {
-		numberOfAnswers = uint16(len(response.Answers))
-		rcode = response.Flags.RCODE
-	} else if q.Type == RecordTypeAAAA {
-		numberOfAnswers = uint16(len(response.Answers))
-		rcode = response.Flags.RCODE
-	} else if q.Type == RecordTypeHTTPS {
-		numberOfAnswers = uint16(len(response.Answers))
-		rcode = response.Flags.RCODE
-	} else {
-		numberOfAnswers = 0
-		rcode = response.Flags.RCODE
+	switch q.Type {
+	case RecordTypeA:
+	case RecordTypeAAAA:
+	case RecordTypeHTTPS:
+	default:
+		return nil, fmt.Errorf("unsupported question type")
+	}
+
+	truncation := false
+	maxLength := int(request.RequestorPayloadSize)
+
+	questionAndAnswerBuffer := bytes.NewBuffer(make([]byte, 0, maxLength))
+
+	headerPlaceholder := make([]byte, headerLength)
+	_, err := questionAndAnswerBuffer.Write(headerPlaceholder)
+	if err != nil {
+		return nil, err
+	}
+
+	err = writeQuestion(questionAndAnswerBuffer, q)
+	if err != nil {
+		return nil, err
+	}
+
+	numberOfAnswers := uint16(0)
+	for _, answer := range response.Answers {
+		answerBuffer := &bytes.Buffer{}
+		err = writeAnswer(answerBuffer, answer)
+		if err != nil {
+			return nil, err
+		}
+
+		if maxLength-questionAndAnswerBuffer.Len()-answerBuffer.Len() >= 0 {
+			questionAndAnswerBuffer.Write(answerBuffer.Bytes())
+			numberOfAnswers++
+		} else {
+			truncation = true
+			break
+		}
 	}
 
 	f := Flags{
@@ -35,13 +61,13 @@ func MarshalResponse(request *Request, response *Response) ([]byte, error) {
 		OPCODE: 0,
 		// TODO pass AA answer vs leak underlying resolver?
 		AA:    false,
-		TC:    response.Flags.TC,
+		TC:    truncation,
 		RD:    request.Flags.RD,
-		RA:    response.Flags.RA,
+		RA:    true,
 		Z:     false,
 		AD:    false,
 		CD:    false,
-		RCODE: rcode,
+		RCODE: response.Flags.RCODE,
 	}
 
 	packedFlags := MarshalFlags(f)
@@ -55,28 +81,28 @@ func MarshalResponse(request *Request, response *Response) ([]byte, error) {
 		NumberOfAdditionalRRs: 0,
 	}
 
-	rp := &bytes.Buffer{}
-	err := writeHeader(rp, header)
+	result := questionAndAnswerBuffer.Bytes()
+
+	headerBuffer := &bytes.Buffer{}
+	err = writeHeader(headerBuffer, header)
 	if err != nil {
 		return nil, err
 	}
 
-	err = writeQuestion(rp, q)
-	if err != nil {
-		return nil, err
+	headerBytes := headerBuffer.Bytes()
+	if len(headerBytes) != headerLength {
+		return nil, fmt.Errorf("wrong header length, expected %d, got %d", headerLength, len(headerBytes))
 	}
 
-	if q.Type == RecordTypeA || q.Type == RecordTypeAAAA || q.Type == RecordTypeHTTPS {
-		// Response
-		for _, answer := range response.Answers {
-			err = writeAnswer(rp, answer)
-			if err != nil {
-				return nil, err
-			}
-		}
+	for i := 0; i < headerLength; i++ {
+		result[i] = headerBytes[i]
 	}
 
-	return rp.Bytes(), nil
+	if len(result) > maxLength {
+		return nil, fmt.Errorf("response too long, expected max %d, got %d)", maxLength, len(result))
+	}
+
+	return result, nil
 }
 
 func MarshalEmptyFormatError(buffer []byte) ([]byte, error) {
@@ -89,6 +115,7 @@ func MarshalEmptyFormatError(buffer []byte) ([]byte, error) {
 		QR:     true, // this is a response
 		OPCODE: 0,
 		RCODE:  ResponseCodeFormatError,
+		RA:     true,
 	}
 
 	header := &Header{
@@ -114,6 +141,7 @@ func MarshalServerFailure(request *Request) ([]byte, error) {
 		QR:     true, // this is a response
 		OPCODE: 0,
 		RCODE:  ResponseCodeServFail,
+		RA:     true,
 	}
 
 	header := &Header{
@@ -137,6 +165,23 @@ func MarshalServerFailure(request *Request) ([]byte, error) {
 	}
 
 	return rp.Bytes(), nil
+}
+
+func generateBlockResponse() *Response {
+	var response *Response
+	flags := Flags{
+		QR:     true, // this is a response
+		OPCODE: 0,
+		RCODE:  ResponseCodeNXDomain,
+		RA:     true,
+	}
+
+	response = &Response{
+		Flags:   flags,
+		Answers: nil,
+	}
+
+	return response
 }
 
 func UnmarshalResponse(data []byte) (*Response, error) {
