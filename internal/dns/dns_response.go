@@ -94,9 +94,7 @@ func MarshalResponse(request *Request, response *Response) ([]byte, error) {
 		return nil, fmt.Errorf("wrong header length, expected %d, got %d", headerLength, len(headerBytes))
 	}
 
-	for i := 0; i < headerLength; i++ {
-		result[i] = headerBytes[i]
-	}
+	copy(result[0:12], headerBytes)
 
 	if len(result) > maxLength {
 		return nil, fmt.Errorf("response too long, expected max %d, got %d)", maxLength, len(result))
