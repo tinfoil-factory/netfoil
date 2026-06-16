@@ -131,7 +131,7 @@ func TestNonEmptyAdditionalRR(t *testing.T) {
 
 	err := writeHeader(buffer, &Header{
 		NumberOfQuestions:     1,
-		NumberOfAdditionalRRs: 1,
+		NumberOfAdditionalRRs: 2,
 	})
 
 	if err != nil {
@@ -143,7 +143,7 @@ func TestNonEmptyAdditionalRR(t *testing.T) {
 		t.Fatal("expected error, got none")
 	}
 
-	expectedError := "expected no additional RRs, got 1"
+	expectedError := "expected at most one additional RR, got 2"
 	if err.Error() != expectedError {
 		t.Errorf("expected error '%s', got '%s'", expectedError, err.Error())
 	}
