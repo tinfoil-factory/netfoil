@@ -462,8 +462,8 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 		}
 
 		if answer.Type == RecordTypeCNAME {
-			if !(requestType == RecordTypeA || requestType == RecordTypeAAAA) {
-				reason := fmt.Sprintf("deny due to CNAME response not matching request type 1 or 28: %d", answer.Type)
+			if !(requestType == RecordTypeA || requestType == RecordTypeAAAA || requestType == RecordTypeHTTPS) {
+				reason := fmt.Sprintf("deny due to CNAME response not matching request type A, AAAA or HTTPS: %d", answer.Type)
 				reasons = append(reasons, FilterReason(reason))
 				return false, reasons
 			}
@@ -532,12 +532,21 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 	}
 
 	if len(cnames) > 0 {
-		err := correctCNAMEChain(cnames, questionName, ipDomains)
-		if err != nil {
-			reason := FilterReason(err.Error())
-			reasons = append(reasons, reason)
-			return false, reasons
+		if requestType == RecordTypeHTTPS {
+			if len(response.Answers) != 1 {
+				reason := FilterReason("deny because CNAME answer is not the only one")
+				reasons = append(reasons, reason)
+				return false, reasons
+			}
+		} else {
+			err := correctCNAMEChain(cnames, questionName, ipDomains)
+			if err != nil {
+				reason := FilterReason(err.Error())
+				reasons = append(reasons, reason)
+				return false, reasons
+			}
 		}
+
 	}
 
 	uniqueDomains := make(map[string]struct{})
