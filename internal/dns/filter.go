@@ -533,8 +533,15 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 
 	if len(cnames) > 0 {
 		if requestType == RecordTypeHTTPS {
-			if len(response.Answers) != 1 {
-				reason := FilterReason("deny because CNAME answer is not the only one")
+			if len(response.Answers) != len(cnames) {
+				reason := FilterReason("deny because response is not just CNAME records")
+				reasons = append(reasons, reason)
+				return false, reasons
+			}
+
+			_, err := correctCNAMEChainNoEnd(cnames, questionName)
+			if err != nil {
+				reason := FilterReason(err.Error())
 				reasons = append(reasons, reason)
 				return false, reasons
 			}
@@ -618,8 +625,26 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 }
 
 func correctCNAMEChain(cnames map[string]string, start string, end map[string]struct{}) error {
+	lastDomain, err := correctCNAMEChainNoEnd(cnames, start)
+	if err != nil {
+		return err
+	}
+
+	if len(end) != 1 {
+		return fmt.Errorf("missing IP record")
+	}
+
+	_, found := end[lastDomain]
+	if !found {
+		return fmt.Errorf("incomplete CNAME chain, missing IP record")
+	}
+
+	return nil
+}
+
+func correctCNAMEChainNoEnd(cnames map[string]string, start string) (string, error) {
 	if len(cnames) > maxNumberOfCnameRecords {
-		return fmt.Errorf("too many CNAME records")
+		return "", fmt.Errorf("too many CNAME records")
 	}
 
 	currentDomain := start
@@ -627,28 +652,19 @@ func correctCNAMEChain(cnames map[string]string, start string, end map[string]st
 	for i := 0; i < len(cnames); i++ {
 		_, alreadyVisited := visited[currentDomain]
 		if alreadyVisited {
-			return fmt.Errorf("loop in CNAME chain")
+			return "", fmt.Errorf("loop in CNAME chain")
 		}
 		visited[currentDomain] = struct{}{}
 
 		entry, found := cnames[currentDomain]
 		if !found {
-			return fmt.Errorf("incomplete CNAME chain")
+			return "", fmt.Errorf("incomplete CNAME chain")
 		}
 
 		currentDomain = entry
 	}
 
-	if len(end) != 1 {
-		return fmt.Errorf("missing IP record")
-	}
-
-	_, found := end[currentDomain]
-	if !found {
-		return fmt.Errorf("incomplete CNAME chain, missing IP record")
-	}
-
-	return nil
+	return currentDomain, nil
 }
 
 func supportedRequest(query *Request) bool {
