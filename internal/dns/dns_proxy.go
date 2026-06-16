@@ -74,7 +74,7 @@ func (t *timedResponse) rewriteTTLs() (result *Response, stillValid bool) {
 }
 
 func Server(conn *net.UDPConn, config *Config, policy *Policy, caCertPool *x509.CertPool) error {
-	dohClient, err := NewDoHClient(config.DoHURL, config.DoHIPs[0], caCertPool)
+	dohClient, err := NewDoHClient(config.DoHURL, config.DoHIPs, caCertPool)
 	if err != nil {
 		return err
 	}
