@@ -22,6 +22,7 @@ func MarshalResponse(request *Request, response *Response) ([]byte, error) {
 		return nil, fmt.Errorf("unsupported question type")
 	}
 
+	truncation := false
 	maxLength := int(request.RequestorPayloadSize)
 
 	questionAndAnswerBuffer := bytes.NewBuffer(make([]byte, 0, maxLength))
@@ -49,6 +50,7 @@ func MarshalResponse(request *Request, response *Response) ([]byte, error) {
 			questionAndAnswerBuffer.Write(answerBuffer.Bytes())
 			numberOfAnswers++
 		} else {
+			truncation = true
 			break
 		}
 	}
@@ -59,7 +61,7 @@ func MarshalResponse(request *Request, response *Response) ([]byte, error) {
 		OPCODE: 0,
 		// TODO pass AA answer vs leak underlying resolver?
 		AA:    false,
-		TC:    false, // TCP retry not supported
+		TC:    truncation,
 		RD:    request.Flags.RD,
 		RA:    true,
 		Z:     false,
