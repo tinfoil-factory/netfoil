@@ -442,6 +442,7 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 	ipv4s := make(map[string]struct{})
 	ipv6s := make(map[string]struct{})
 	cnames := make(map[string]string)
+	httpsDomains := make(map[string]struct{})
 
 	for _, answer := range response.Answers {
 		if !supportedInResponses(answer.Type) {
@@ -522,6 +523,8 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 					DestinationDomain: echConfig.PublicName + ".",
 				})
 			}
+
+			httpsDomains[answer.Name] = struct{}{}
 		}
 	}
 
@@ -531,19 +534,28 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 		return false, reasons
 	}
 
+	if len(httpsDomains) > 1 {
+		reason := fmt.Sprintf("deny due to more than one domain with HTTPS records")
+		reasons = append(reasons, FilterReason(reason))
+		return false, reasons
+	}
+
 	if len(cnames) > 0 {
 		if requestType == RecordTypeHTTPS {
-			if len(response.Answers) != len(cnames) {
-				reason := FilterReason("deny because response is not just CNAME records")
-				reasons = append(reasons, reason)
-				return false, reasons
-			}
-
-			_, err := correctCNAMEChainNoEnd(cnames, questionName)
-			if err != nil {
-				reason := FilterReason(err.Error())
-				reasons = append(reasons, reason)
-				return false, reasons
+			if len(httpsDomains) > 0 {
+				err := correctCNAMEChain(cnames, questionName, httpsDomains)
+				if err != nil {
+					reason := FilterReason(err.Error())
+					reasons = append(reasons, reason)
+					return false, reasons
+				}
+			} else {
+				_, err := correctCNAMEChainNoEnd(cnames, questionName)
+				if err != nil {
+					reason := FilterReason(err.Error())
+					reasons = append(reasons, reason)
+					return false, reasons
+				}
 			}
 		} else {
 			err := correctCNAMEChain(cnames, questionName, ipDomains)
