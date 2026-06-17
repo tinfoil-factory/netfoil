@@ -13,7 +13,7 @@ const (
 	maxNumberOfIPv6Records  = 10
 	maxNumberOfHTTPSRecords = 10
 	headerLength            = 12
-	tcpMaxPayloadSize       = 65536
+	tcpMaxPayloadSize       = 65535
 )
 
 func MarshalResponse(request *Request, response *Response, isTCP bool) ([]byte, error) {
