@@ -206,7 +206,7 @@ func (w *worker) handleTCPConnection(conn *net.TCPConn) {
 
 	var length *int = nil
 	for {
-		if request.Len() < 2 {
+		if length != nil || request.Len() < 2 {
 			err := conn.SetReadDeadline(time.Now().Add(tcpServerReadWriteTimeout))
 			if err != nil {
 				err := fmt.Errorf("error: failed to set read deadline: %s\n", err.Error())
