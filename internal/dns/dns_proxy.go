@@ -244,11 +244,17 @@ func handleTCPConnection(conn *net.TCPConn, taskChannel chan workerTask, results
 			}
 			closeErr := conn.Close()
 			if closeErr != nil {
-				err = fmt.Errorf("error: %w %w\n", err, closeErr)
+				if err != nil {
+					err = fmt.Errorf("error: %w %w\n", err, closeErr)
+				} else {
+					err = fmt.Errorf("error: failed to close TCP: %w\n", closeErr)
+				}
 			}
 
-			resultsChannel <- workerResult{
-				err: err,
+			if err != nil {
+				resultsChannel <- workerResult{
+					err: err,
+				}
 			}
 
 			return
