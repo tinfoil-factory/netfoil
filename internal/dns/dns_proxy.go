@@ -240,7 +240,7 @@ func handleTCPConnection(conn *net.TCPConn, taskChannel chan workerTask, results
 				err = fmt.Errorf("error: reading from TCP: %w\n", err)
 			}
 			closeErr := conn.Close()
-			if err != nil {
+			if closeErr != nil {
 				err = fmt.Errorf("error: %w %w\n", err, closeErr)
 			}
 
