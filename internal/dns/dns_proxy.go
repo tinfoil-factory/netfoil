@@ -17,11 +17,11 @@ import (
 	"github.com/tinfoil-factory/netfoil/internal/lru"
 )
 
-type ConnectionType int
+type ConnectionType string
 
 const (
-	ConnectionTypeUDP = 0
-	ConnectionTypeTCP = 1
+	ConnectionTypeUDP = "UDP"
+	ConnectionTypeTCP = "TCP"
 )
 
 type workerTask struct {
@@ -192,6 +192,7 @@ func Server(conn *net.UDPConn, tcpListener *net.TCPListener, config *Config, pol
 				responseLength: responseLength,
 				udpRemote:      remote,
 				remote:         remote.String(),
+				connectionType: ConnectionTypeUDP,
 			}
 
 			tasksChannel <- workerTask
@@ -297,6 +298,7 @@ func (w *worker) handleTCPConnection(conn *net.TCPConn) {
 		}
 
 		length = nil
+		request.Reset()
 
 		if result.marshalledResponse != nil {
 			bf := bytes.Buffer{}
