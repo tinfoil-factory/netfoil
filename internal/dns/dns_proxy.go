@@ -243,7 +243,7 @@ func handleTCPConnection(conn *net.TCPConn, taskChannel chan workerTask) {
 		}
 
 		workerTask := workerTask{
-			rawRequest:     buf[2:*length],
+			rawRequest:     request.Bytes()[2:],
 			responseLength: *length,
 			remote:         nil,
 			tcpConn:        conn,
