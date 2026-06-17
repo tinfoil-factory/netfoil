@@ -146,7 +146,7 @@ func Server(conn *net.UDPConn, tcpListener *net.TCPListener, config *Config, pol
 	for i := 0; i < maxTCPWorkers; i++ {
 		go func() {
 			for conn := range tcpConnQueue {
-				handleTCPConnection(conn, tasksChannel)
+				handleTCPConnection(conn, tasksChannel, resultsChannel)
 			}
 		}()
 	}
@@ -155,7 +155,11 @@ func Server(conn *net.UDPConn, tcpListener *net.TCPListener, config *Config, pol
 		for {
 			conn, err := tcpListener.Accept()
 			if err != nil {
-				fmt.Printf("error: failed to accept connection: %s\n", err.Error())
+				err = fmt.Errorf("error: failed to accept connection: %w\n", err)
+				resultsChannel <- workerResult{
+					err: err,
+				}
+				continue
 			}
 			tcpConn := conn.(*net.TCPConn)
 
@@ -164,8 +168,12 @@ func Server(conn *net.UDPConn, tcpListener *net.TCPListener, config *Config, pol
 			default:
 				err = conn.Close()
 				if err != nil {
-					fmt.Printf("error: failed to close connection: %s\n", err.Error())
+					err = fmt.Errorf("error: %w\n", err)
+					resultsChannel <- workerResult{
+						err: err,
+					}
 				}
+				continue
 			}
 		}
 	}()
@@ -174,7 +182,12 @@ func Server(conn *net.UDPConn, tcpListener *net.TCPListener, config *Config, pol
 		buf := make([]byte, 1024)
 		responseLength, remote, err := conn.ReadFromUDP(buf[:])
 		if err != nil {
-			fmt.Printf("error: reading from udp: %s\n", err.Error())
+			err = fmt.Errorf("error: reading from UDP: %w\n", err)
+
+			resultsChannel <- workerResult{
+				err: err,
+			}
+
 			continue
 		}
 
@@ -190,7 +203,7 @@ func Server(conn *net.UDPConn, tcpListener *net.TCPListener, config *Config, pol
 	}
 }
 
-func handleTCPConnection(conn *net.TCPConn, taskChannel chan workerTask) {
+func handleTCPConnection(conn *net.TCPConn, taskChannel chan workerTask, resultsChannel chan workerResult) {
 	request := bytes.Buffer{}
 	buf := make([]byte, 1024)
 
@@ -198,11 +211,16 @@ func handleTCPConnection(conn *net.TCPConn, taskChannel chan workerTask) {
 	for {
 		err := conn.SetReadDeadline(time.Now().Add(timeout))
 		if err != nil {
-			fmt.Printf("error: failed to set read deadline: %s\n", err.Error())
-			err = conn.Close()
-			if err != nil {
-				fmt.Printf("error: failed to close connection: %s\n", err.Error())
+			err := fmt.Errorf("error: failed to set read deadline: %s\n", err.Error())
+			closeErr := conn.Close()
+			if closeErr != nil {
+				err = fmt.Errorf("error: %w %w\n", err, closeErr)
 			}
+
+			resultsChannel <- workerResult{
+				err: err,
+			}
+
 			return
 		}
 
@@ -219,12 +237,17 @@ func handleTCPConnection(conn *net.TCPConn, taskChannel chan workerTask) {
 			} else if errors.Is(err, os.ErrDeadlineExceeded) {
 				// ignore
 			} else {
-				fmt.Printf("error: reading from TCP: %s\n", err.Error())
+				err = fmt.Errorf("error: reading from TCP: %w\n", err)
 			}
-			err := conn.Close()
+			closeErr := conn.Close()
 			if err != nil {
-				fmt.Printf("error: failed to close TCP connection: %s\n", err.Error())
+				err = fmt.Errorf("error: %w %w\n", err, closeErr)
 			}
+
+			resultsChannel <- workerResult{
+				err: err,
+			}
+
 			return
 		}
 
