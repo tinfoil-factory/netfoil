@@ -206,58 +206,62 @@ func (w *worker) handleTCPConnection(conn *net.TCPConn) {
 
 	var length *int = nil
 	for {
-		err := conn.SetReadDeadline(time.Now().Add(tcpServerReadWriteTimeout))
-		if err != nil {
-			err := fmt.Errorf("error: failed to set read deadline: %s\n", err.Error())
-			closeErr := conn.Close()
-			if closeErr != nil {
-				err = fmt.Errorf("error: %w %w\n", err, closeErr)
-			}
-
-			w.resultsChannel <- workerResult{
-				err: err,
-			}
-
-			return
-		}
-
-		readLength := len(buf)
-		if length != nil && *length < readLength {
-			readLength = *length
-		}
-		responseLength, err := conn.Read(buf[:readLength])
-		if err != nil {
-			if errors.Is(err, net.ErrClosed) {
-				// ignore
-				err = nil
-			} else if errors.Is(err, io.EOF) {
-				// ignore
-				err = nil
-			} else if errors.Is(err, os.ErrDeadlineExceeded) {
-				// ignore
-				err = nil
-			} else {
-				err = fmt.Errorf("error: reading from TCP: %w\n", err)
-			}
-			closeErr := conn.Close()
-			if closeErr != nil {
-				if err != nil {
-					err = fmt.Errorf("error: %w %w\n", err, closeErr)
-				} else {
-					err = fmt.Errorf("error: failed to close TCP: %w\n", closeErr)
-				}
-			}
-
+		if request.Len() < 2 {
+			err := conn.SetReadDeadline(time.Now().Add(tcpServerReadWriteTimeout))
 			if err != nil {
+				err := fmt.Errorf("error: failed to set read deadline: %s\n", err.Error())
+				closeErr := conn.Close()
+				if closeErr != nil {
+					err = fmt.Errorf("error: %w %w\n", err, closeErr)
+				}
+
 				w.resultsChannel <- workerResult{
 					err: err,
 				}
+
+				return
 			}
 
-			return
+			readLength := len(buf)
+			if length != nil && *length < readLength {
+				readLength = *length
+			}
+
+			responseLength, err := conn.Read(buf[:readLength])
+			if err != nil {
+				if errors.Is(err, net.ErrClosed) {
+					// ignore
+					err = nil
+				} else if errors.Is(err, io.EOF) {
+					// ignore
+					err = nil
+				} else if errors.Is(err, os.ErrDeadlineExceeded) {
+					// ignore
+					err = nil
+				} else {
+					err = fmt.Errorf("error: reading from TCP: %w\n", err)
+				}
+				closeErr := conn.Close()
+				if closeErr != nil {
+					if err != nil {
+						err = fmt.Errorf("error: %w %w\n", err, closeErr)
+					} else {
+						err = fmt.Errorf("error: failed to close TCP: %w\n", closeErr)
+					}
+				}
+
+				if err != nil {
+					w.resultsChannel <- workerResult{
+						err: err,
+					}
+				}
+
+				return
+			}
+
+			request.Write(buf[:responseLength])
 		}
 
-		request.Write(buf[:responseLength])
 		if length == nil && request.Len() < 2 {
 			continue
 		}
@@ -267,12 +271,13 @@ func (w *worker) handleTCPConnection(conn *net.TCPConn) {
 			length = &l
 		}
 
-		if request.Len() < *length+2 {
+		requestTotalLength := *length + 2
+		if request.Len() < requestTotalLength {
 			continue
 		}
 
 		workerTask := workerTask{
-			rawRequest:     request.Bytes()[2:],
+			rawRequest:     request.Bytes()[2:requestTotalLength],
 			responseLength: *length,
 			udpRemote:      nil,
 			connectionType: ConnectionTypeTCP,
@@ -297,8 +302,14 @@ func (w *worker) handleTCPConnection(conn *net.TCPConn) {
 			err:             err,
 		}
 
+		if request.Len() > requestTotalLength {
+			residual := slices.Clone(request.Bytes()[requestTotalLength:])
+			request.Reset()
+			request.Write(residual)
+		} else {
+			request.Reset()
+		}
 		length = nil
-		request.Reset()
 
 		if result.marshalledResponse != nil {
 			bf := bytes.Buffer{}
