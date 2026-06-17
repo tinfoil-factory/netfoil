@@ -626,10 +626,9 @@ func (w *worker) process(workerTask *workerTask) (processResponse, error) {
 		l := fmt.Sprintf("unsupported request type %d", question.Type)
 		result.appendLogEvent(LogEvent(l))
 
-		// FIXME what is the best response?
 		notImplementedResponse, marshalErr := MarshalNotImplementedResponse(request)
 		if marshalErr != nil {
-			return result, fmt.Errorf("failed to not implemented error '%w'", marshalErr)
+			return result, fmt.Errorf("failed to marshal not implemented response '%w'", marshalErr)
 		}
 
 		result.marshalledResponse = notImplementedResponse
