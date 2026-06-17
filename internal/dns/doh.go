@@ -21,10 +21,11 @@ import (
 // https://datatracker.ietf.org/doc/html/rfc8484
 
 const (
-	timeout                = 20 * time.Second
-	keepAliveProbeTime     = 30 * time.Second
-	idleSessionTimeout     = 90 * time.Second
-	maxResponseHeaderBytes = 2000
+	timeout                   = 20 * time.Second
+	tcpServerReadWriteTimeout = 10 * time.Second
+	keepAliveProbeTime        = 30 * time.Second
+	idleSessionTimeout        = 90 * time.Second
+	maxResponseHeaderBytes    = 2000
 )
 
 type DoHClient struct {
