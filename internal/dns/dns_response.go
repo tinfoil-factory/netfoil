@@ -9,10 +9,14 @@ import (
 
 const (
 	maxNumberOfCnameRecords = 10
+	maxNumberOfIPv4Records  = 10
+	maxNumberOfIPv6Records  = 10
+	maxNumberOfHTTPSRecords = 10
 	headerLength            = 12
+	tcpMaxPayloadSize       = 65536
 )
 
-func MarshalResponse(request *Request, response *Response) ([]byte, error) {
+func MarshalResponse(request *Request, response *Response, isTCP bool) ([]byte, error) {
 	q := request.Question
 	switch q.Type {
 	case RecordTypeA:
@@ -24,6 +28,9 @@ func MarshalResponse(request *Request, response *Response) ([]byte, error) {
 
 	truncation := false
 	maxLength := int(request.RequestorPayloadSize)
+	if isTCP {
+		maxLength = tcpMaxPayloadSize
+	}
 
 	questionAndAnswerBuffer := bytes.NewBuffer(make([]byte, 0, maxLength))
 
@@ -50,7 +57,10 @@ func MarshalResponse(request *Request, response *Response) ([]byte, error) {
 			questionAndAnswerBuffer.Write(answerBuffer.Bytes())
 			numberOfAnswers++
 		} else {
-			truncation = true
+			// TODO what to do in this case?
+			if !isTCP {
+				truncation = true
+			}
 			break
 		}
 	}
@@ -231,6 +241,9 @@ func UnmarshalResponse(data []byte) (*Response, error) {
 	// https://datatracker.ietf.org/doc/html/rfc1035#section-4.1.3
 	answers := make([]Answer, 0)
 	cnames := make(map[string]struct{})
+	IPv4Count := 0
+	IPv6Count := 0
+	HTTPSCount := 0
 	for i := 0; i < int(header.NumberOfAnswers); i++ {
 		name, err := readDomain(data, p)
 		if err != nil {
@@ -275,6 +288,11 @@ func UnmarshalResponse(data []byte) (*Response, error) {
 
 			ip := net.IPv4(rawData[0], rawData[1], rawData[2], rawData[3])
 			a.IPv4 = ip.To4()
+
+			IPv4Count++
+			if IPv4Count > maxNumberOfIPv4Records {
+				return nil, fmt.Errorf("too many IPv4 records")
+			}
 		case RecordTypeAAAA:
 			if len(rawData) != 16 {
 				return nil, fmt.Errorf("invalid IPv6 length in response")
@@ -282,12 +300,22 @@ func UnmarshalResponse(data []byte) (*Response, error) {
 
 			ip := net.IP(rawData)
 			a.IPv6 = ip
+
+			IPv6Count++
+			if IPv6Count > maxNumberOfIPv6Records {
+				return nil, fmt.Errorf("too many IPv4 records")
+			}
 		case RecordTypeHTTPS:
 			r, err := unmarshalHTTPSRecord(rawData)
 			if err != nil {
 				return nil, err
 			}
 			a.HTTPSRecord = *r
+
+			HTTPSCount++
+			if HTTPSCount > maxNumberOfHTTPSRecords {
+				return nil, fmt.Errorf("too many IPv4 records")
+			}
 		case RecordTypeCNAME:
 			pb := bytes.NewBuffer(rawData)
 			domain, err := readDomain(data, pb)

@@ -3,6 +3,7 @@ Description=netfoil socket
 
 [Socket]
 ListenDatagram=127.0.0.1:53
+ListenStream=127.0.0.1:53
 Service=netfoil.service
 
 [Install]

@@ -1,10 +1,15 @@
 package dns
 
 import (
+	"bytes"
 	"crypto/x509"
+	"encoding/binary"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
+	"os"
 	"slices"
 	"strings"
 	"time"
@@ -16,10 +21,12 @@ type workerTask struct {
 	rawRequest     []byte
 	responseLength int
 	remote         *net.UDPAddr
+	tcpConn        *net.TCPConn
 }
 
 type workerResult struct {
 	remote             *net.UDPAddr
+	tcpConn            *net.TCPConn
 	question           *Question
 	response           *Response
 	marshalledResponse []byte
@@ -73,7 +80,7 @@ func (t *timedResponse) rewriteTTLs() (result *Response, stillValid bool) {
 	return result, ok
 }
 
-func Server(conn *net.UDPConn, config *Config, policy *Policy, caCertPool *x509.CertPool) error {
+func Server(conn *net.UDPConn, tcpListener *net.TCPListener, config *Config, policy *Policy, caCertPool *x509.CertPool) error {
 	dohClient, err := NewDoHClient(config.DoHURL, config.DoHIPs, caCertPool)
 	if err != nil {
 		return err
@@ -107,9 +114,57 @@ func Server(conn *net.UDPConn, config *Config, policy *Policy, caCertPool *x509.
 			}
 
 			if result.marshalledResponse != nil {
-				_, err = conn.WriteToUDP(result.marshalledResponse, result.remote)
+				if result.tcpConn != nil {
+					bf := bytes.Buffer{}
+					err := binary.Write(&bf, binary.BigEndian, uint16(len(result.marshalledResponse)))
+					if err != nil {
+						fmt.Printf("error marshalling TCP length: %v\n", err)
+					}
+
+					_, err = result.tcpConn.Write(bf.Bytes())
+					if err != nil {
+						fmt.Printf("error: failed to write TCP length: %s\n", err.Error())
+					}
+
+					_, err = result.tcpConn.Write(result.marshalledResponse)
+					if err != nil {
+						fmt.Printf("error: failed to write TCP response: %s\n", err.Error())
+					}
+				} else {
+					_, err = conn.WriteToUDP(result.marshalledResponse, result.remote)
+					if err != nil {
+						fmt.Printf("error: failed to write UDP response: %s\n", err.Error())
+					}
+				}
+			}
+		}
+	}()
+
+	maxTCPWorkers := 10
+	tcpConnQueue := make(chan *net.TCPConn, 50)
+
+	for i := 0; i < maxTCPWorkers; i++ {
+		go func() {
+			for conn := range tcpConnQueue {
+				handleTCPConnection(conn, tasksChannel)
+			}
+		}()
+	}
+
+	go func() {
+		for {
+			conn, err := tcpListener.Accept()
+			if err != nil {
+				fmt.Printf("error: failed to accept connection: %s\n", err.Error())
+			}
+			tcpConn := conn.(*net.TCPConn)
+
+			select {
+			case tcpConnQueue <- tcpConn:
+			default:
+				err = conn.Close()
 				if err != nil {
-					fmt.Printf("error: failed to write response: %s\n", err.Error())
+					fmt.Printf("error: failed to close connection: %s\n", err.Error())
 				}
 			}
 		}
@@ -132,6 +187,70 @@ func Server(conn *net.UDPConn, config *Config, policy *Policy, caCertPool *x509.
 
 			tasksChannel <- workerTask
 		}
+	}
+}
+
+func handleTCPConnection(conn *net.TCPConn, taskChannel chan workerTask) {
+	request := bytes.Buffer{}
+	buf := make([]byte, 1024)
+
+	var length *int = nil
+	for {
+		err := conn.SetReadDeadline(time.Now().Add(timeout))
+		if err != nil {
+			fmt.Printf("error: failed to set read deadline: %s\n", err.Error())
+			err = conn.Close()
+			if err != nil {
+				fmt.Printf("error: failed to close connection: %s\n", err.Error())
+			}
+			return
+		}
+
+		readLength := len(buf)
+		if length != nil && *length < readLength {
+			readLength = *length
+		}
+		responseLength, err := conn.Read(buf[:readLength])
+		if err != nil {
+			if errors.Is(err, net.ErrClosed) {
+				// ignore
+			} else if errors.Is(err, io.EOF) {
+				// ignore
+			} else if errors.Is(err, os.ErrDeadlineExceeded) {
+				// ignore
+			} else {
+				fmt.Printf("error: reading from TCP: %s\n", err.Error())
+			}
+			err := conn.Close()
+			if err != nil {
+				fmt.Printf("error: failed to close TCP connection: %s\n", err.Error())
+			}
+			return
+		}
+
+		request.Write(buf[:responseLength])
+		if length == nil && request.Len() < 2 {
+			continue
+		}
+
+		if length == nil {
+			l := int(binary.BigEndian.Uint16(request.Bytes()[0:2]))
+			length = &l
+		}
+
+		if request.Len() < *length+2 {
+			continue
+		}
+
+		workerTask := workerTask{
+			rawRequest:     buf[2:*length],
+			responseLength: *length,
+			remote:         nil,
+			tcpConn:        conn,
+		}
+
+		taskChannel <- workerTask
+		length = nil
 	}
 }
 
@@ -240,6 +359,7 @@ func (w *worker) start() {
 
 			w.resultsChannel <- workerResult{
 				remote:             task.remote,
+				tcpConn:            task.tcpConn,
 				question:           result.question,
 				response:           result.response,
 				marshalledResponse: result.marshalledResponse,
@@ -295,7 +415,13 @@ func (w *worker) process(workerTask *workerTask) (processResponse, error) {
 	buf := workerTask.rawRequest
 	policy := w.policy
 
-	result.appendLogEvent(LogEvent(fmt.Sprintf("query from: %s", remote.String())))
+	isTCP := false
+	if workerTask.tcpConn != nil {
+		isTCP = true
+		result.appendLogEvent(LogEvent(fmt.Sprintf("query from: %s [TCP]", workerTask.tcpConn.RemoteAddr().String())))
+	} else {
+		result.appendLogEvent(LogEvent(fmt.Sprintf("query from: %s [UDP]", remote.String())))
+	}
 
 	request, err := UnmarshalRequest(buf[:responseLength])
 	if err != nil {
@@ -419,7 +545,7 @@ func (w *worker) process(workerTask *workerTask) (processResponse, error) {
 		result.response.Answers[i] = answer
 	}
 
-	marshalledResponse, err := MarshalResponse(request, result.response)
+	marshalledResponse, err := MarshalResponse(request, result.response, isTCP)
 	if err != nil {
 		return result, fmt.Errorf("failed to marshal response '%w'", err)
 	}
