@@ -175,6 +175,37 @@ func MarshalServerFailure(request *Request) ([]byte, error) {
 	return rp.Bytes(), nil
 }
 
+func MarshalNotImplementedResponse(request *Request) ([]byte, error) {
+	flags := Flags{
+		QR:     true, // this is a response
+		OPCODE: 0,
+		RCODE:  ResponseCodeNotImp,
+		RA:     true,
+	}
+
+	header := &Header{
+		TransactionID:         request.TransactionID,
+		Flags:                 MarshalFlags(flags),
+		NumberOfQuestions:     1,
+		NumberOfAnswers:       0,
+		NumberOfAuthorityRRs:  0,
+		NumberOfAdditionalRRs: 0,
+	}
+
+	rp := &bytes.Buffer{}
+	err := writeHeader(rp, header)
+	if err != nil {
+		return nil, err
+	}
+
+	err = writeQuestion(rp, request.Question)
+	if err != nil {
+		return nil, err
+	}
+
+	return rp.Bytes(), nil
+}
+
 func generateBlockResponse() *Response {
 	var response *Response
 	flags := Flags{

@@ -911,23 +911,3 @@ func generateAResponse(question *Question, ip net.IP) *Response {
 
 	return response
 }
-
-func generateNoDataResponse() *Response {
-	flags := Flags{
-		RCODE: ResponseCodeNoError,
-	}
-	return &Response{
-		Flags:   flags,
-		Answers: []Answer{},
-	}
-}
-
-func generateNotImplementedResponse() *Response {
-	flags := Flags{
-		RCODE: ResponseCodeNotImp,
-	}
-	return &Response{
-		Flags:   flags,
-		Answers: []Answer{},
-	}
-}

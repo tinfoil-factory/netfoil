@@ -616,7 +616,13 @@ func (w *worker) process(workerTask *workerTask) (processResponse, error) {
 		result.appendLogEvent(LogEvent(l))
 
 		// FIXME what is the best response?
-		result.response = generateNotImplementedResponse()
+		notImplementedResponse, marshalErr := MarshalNotImplementedResponse(request)
+		if marshalErr != nil {
+			return result, fmt.Errorf("failed to not implemented error '%w'", marshalErr)
+		}
+
+		result.marshalledResponse = notImplementedResponse
+		return result, nil
 	}
 
 	for i, answer := range result.response.Answers {
