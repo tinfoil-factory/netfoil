@@ -232,10 +232,13 @@ func handleTCPConnection(conn *net.TCPConn, taskChannel chan workerTask, results
 		if err != nil {
 			if errors.Is(err, net.ErrClosed) {
 				// ignore
+				err = nil
 			} else if errors.Is(err, io.EOF) {
 				// ignore
+				err = nil
 			} else if errors.Is(err, os.ErrDeadlineExceeded) {
 				// ignore
+				err = nil
 			} else {
 				err = fmt.Errorf("error: reading from TCP: %w\n", err)
 			}
