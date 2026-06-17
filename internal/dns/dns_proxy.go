@@ -206,22 +206,23 @@ func (w *worker) handleTCPConnection(conn *net.TCPConn) {
 
 	var length *int = nil
 	for {
-		if length != nil || request.Len() < 2 {
-			err := conn.SetReadDeadline(time.Now().Add(tcpServerReadWriteTimeout))
-			if err != nil {
-				err := fmt.Errorf("error: failed to set read deadline: %s\n", err.Error())
-				closeErr := conn.Close()
-				if closeErr != nil {
-					err = fmt.Errorf("error: %w %w\n", err, closeErr)
-				}
-
-				w.resultsChannel <- workerResult{
-					err: err,
-				}
-
-				return
+		err := conn.SetReadDeadline(time.Now().Add(tcpServerReadWriteTimeout))
+		if err != nil {
+			err := fmt.Errorf("error: failed to set read deadline: %s\n", err.Error())
+			closeErr := conn.Close()
+			if closeErr != nil {
+				err = fmt.Errorf("error: %w %w\n", err, closeErr)
 			}
 
+			w.resultsChannel <- workerResult{
+				err: err,
+			}
+
+			return
+		}
+
+	continueRead:
+		if length != nil || request.Len() < 2 {
 			readLength := len(buf)
 			if length != nil && *length < readLength {
 				readLength = *length
@@ -262,8 +263,8 @@ func (w *worker) handleTCPConnection(conn *net.TCPConn) {
 			request.Write(buf[:responseLength])
 		}
 
-		if length == nil && request.Len() < 2 {
-			continue
+		if request.Len() < 2 {
+			goto continueRead
 		}
 
 		if length == nil {
@@ -273,7 +274,7 @@ func (w *worker) handleTCPConnection(conn *net.TCPConn) {
 
 		requestTotalLength := *length + 2
 		if request.Len() < requestTotalLength {
-			continue
+			goto continueRead
 		}
 
 		workerTask := workerTask{
