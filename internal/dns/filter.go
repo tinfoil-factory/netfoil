@@ -43,15 +43,15 @@ type Policy struct {
 }
 
 func NewPolicy(configDirectory string, blockPunycode bool, pinResponseDomain bool) (*Policy, error) {
-	partialPolicy := Policy{
-		blockPunycode: blockPunycode,
-	}
-
-	knownTLDs, err := readKnownTLDs(configDirectory, partialPolicy)
+	knownTLDs, err := readKnownTLDs(configDirectory, Policy{})
 	if err != nil {
 		return nil, err
 	}
-	partialPolicy.knownTLDs = knownTLDs
+
+	partialPolicy := Policy{
+		knownTLDs:     knownTLDs,
+		blockPunycode: blockPunycode,
+	}
 
 	allowTLDs, err := readAndValidateTLDs(configDirectory, configFilenameAllowTLDs, knownTLDs, partialPolicy)
 	if err != nil {
