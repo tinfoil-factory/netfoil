@@ -28,11 +28,13 @@ func MarshalResponse(request *Request, response *Response, isTCP bool) ([]byte, 
 
 	truncation := false
 	maxLength := int(request.RequestorPayloadSize)
+	initialBufferLength := maxLength
 	if isTCP {
 		maxLength = tcpMaxPayloadSize
+		initialBufferLength = int(ednsMaxPayloadSize)
 	}
 
-	questionAndAnswerBuffer := bytes.NewBuffer(make([]byte, 0, maxLength))
+	questionAndAnswerBuffer := bytes.NewBuffer(make([]byte, 0, initialBufferLength))
 
 	headerPlaceholder := make([]byte, headerLength)
 	_, err := questionAndAnswerBuffer.Write(headerPlaceholder)
