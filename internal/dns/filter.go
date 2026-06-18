@@ -43,17 +43,17 @@ type Policy struct {
 }
 
 func NewPolicy(configDirectory string, blockPunycode bool, pinResponseDomain bool) (*Policy, error) {
-	knownTLDs, err := readKnownTLDs(configDirectory)
-	if err != nil {
-		return nil, err
-	}
-
 	partialPolicy := Policy{
-		knownTLDs:     knownTLDs,
 		blockPunycode: blockPunycode,
 	}
 
-	allowTLDs, err := readAndValidateTLDs(configDirectory, configFilenameAllowTLDs, knownTLDs)
+	knownTLDs, err := readKnownTLDs(configDirectory, partialPolicy)
+	if err != nil {
+		return nil, err
+	}
+	partialPolicy.knownTLDs = knownTLDs
+
+	allowTLDs, err := readAndValidateTLDs(configDirectory, configFilenameAllowTLDs, knownTLDs, partialPolicy)
 	if err != nil {
 		return nil, err
 	}
@@ -68,7 +68,7 @@ func NewPolicy(configDirectory string, blockPunycode bool, pinResponseDomain boo
 		return nil, err
 	}
 
-	blockTLDs, err := readAndValidateTLDs(configDirectory, configFilenameDenyTLDs, knownTLDs)
+	blockTLDs, err := readAndValidateTLDs(configDirectory, configFilenameDenyTLDs, knownTLDs, partialPolicy)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +151,7 @@ func NewPolicy(configDirectory string, blockPunycode bool, pinResponseDomain boo
 	}, nil
 }
 
-func readKnownTLDs(configDirectory string) (map[string]struct{}, error) {
+func readKnownTLDs(configDirectory string, policy Policy) (map[string]struct{}, error) {
 	tldList, err := readConfig(configDirectory, configFilenameKnownTLDs)
 	if err != nil {
 		return nil, err
@@ -169,8 +169,9 @@ func readKnownTLDs(configDirectory string) (map[string]struct{}, error) {
 		}
 
 		tldWithoutPrefix := strings.TrimPrefix(tld, expectedPrefix)
-		if !labelRegex.MatchString(tldWithoutPrefix) {
-			return nil, fmt.Errorf("%s '%s' ", configFilenameKnownTLDs, tld)
+		err := policy.labelHasCorrectFormat(tldWithoutPrefix)
+		if err != nil {
+			return nil, fmt.Errorf("%s '%s': %s", configFilenameKnownTLDs, tld, err.Error())
 		}
 
 		knownTLDs[tldWithoutPrefix] = struct{}{}
@@ -179,7 +180,7 @@ func readKnownTLDs(configDirectory string) (map[string]struct{}, error) {
 	return knownTLDs, nil
 }
 
-func readAndValidateTLDs(configDirectory string, filename string, knownTLDs map[string]struct{}) ([]string, error) {
+func readAndValidateTLDs(configDirectory string, filename string, knownTLDs map[string]struct{}, policy Policy) ([]string, error) {
 	TLDs, err := readConfig(configDirectory, filename)
 	if err != nil {
 		return nil, err
@@ -195,7 +196,13 @@ func readAndValidateTLDs(configDirectory string, filename string, knownTLDs map[
 			return nil, fmt.Errorf("%s '%s' needs to start with at '.'", filename, TLD)
 		}
 
-		_, found := knownTLDs[strings.TrimPrefix(TLD, expectedPrefix)]
+		tldWithoutPrefix := strings.TrimPrefix(TLD, expectedPrefix)
+		err := policy.labelHasCorrectFormat(tldWithoutPrefix)
+		if err != nil {
+			return nil, fmt.Errorf("%s '%s': %s", filename, TLD, err.Error())
+		}
+
+		_, found := knownTLDs[tldWithoutPrefix]
 		if !found {
 			return nil, fmt.Errorf("%s '%s' not present in known.tld", filename, TLD)
 		}
@@ -782,28 +789,37 @@ func (p *Policy) domainHasCorrectFormat(domain string) error {
 		return fmt.Errorf("domain is not at least two parts")
 	}
 
-	for _, part := range parts {
-		if len(part) > 63 {
-			return fmt.Errorf("label is too long")
-		}
-
-		if !labelRegex.Match([]byte(part)) {
-			return fmt.Errorf("illegal characters in label")
-		}
-
-		// TODO check for '-' in 3,4 spot?
-		// https://datatracker.ietf.org/doc/html/rfc5891#section-4.2.3.1
-
-		if p.blockPunycode {
-			if strings.HasPrefix(part, "xn--") {
-				return fmt.Errorf("punycode present")
-			}
+	for _, label := range parts {
+		err := p.labelHasCorrectFormat(label)
+		if err != nil {
+			return err
 		}
 	}
 
 	_, found := p.knownTLDs[parts[len(parts)-1]]
 	if !found {
 		return fmt.Errorf("not a valid TLD")
+	}
+
+	return nil
+}
+
+func (p *Policy) labelHasCorrectFormat(label string) error {
+	if len(label) > 63 {
+		return fmt.Errorf("label is too long")
+	}
+
+	if !labelRegex.Match([]byte(label)) {
+		return fmt.Errorf("illegal characters in label")
+	}
+
+	// TODO check for '-' in 3,4 spot?
+	// https://datatracker.ietf.org/doc/html/rfc5891#section-4.2.3.1
+
+	if p.blockPunycode {
+		if strings.HasPrefix(label, "xn--") {
+			return fmt.Errorf("punycode present")
+		}
 	}
 
 	return nil
