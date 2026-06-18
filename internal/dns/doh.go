@@ -1,11 +1,13 @@
 package dns
 
 import (
+	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
 	"fmt"
 	"io"
+	"math/big"
 	"net"
 	"net/http"
 	"net/netip"
@@ -19,10 +21,11 @@ import (
 // https://datatracker.ietf.org/doc/html/rfc8484
 
 const (
-	timeout                = 20 * time.Second
-	keepAliveProbeTime     = 30 * time.Second
-	idleSessionTimeout     = 90 * time.Second
-	maxResponseHeaderBytes = 2000
+	timeout                   = 20 * time.Second
+	tcpServerReadWriteTimeout = 10 * time.Second
+	keepAliveProbeTime        = 30 * time.Second
+	idleSessionTimeout        = 90 * time.Second
+	maxResponseHeaderBytes    = 2000
 )
 
 type DoHClient struct {
@@ -88,7 +91,7 @@ func (c *DoHClient) DoH(request *Request) (*Response, error) {
 
 }
 
-func NewDoHClient(dohURL string, DoHIP netip.Addr, caCertPool *x509.CertPool) (*DoHClient, error) {
+func NewDoHClient(dohURL string, DoHIP []netip.Addr, caCertPool *x509.CertPool) (*DoHClient, error) {
 	u, err := url.Parse(dohURL)
 	if err != nil {
 		return nil, err
@@ -116,7 +119,13 @@ func NewDoHClient(dohURL string, DoHIP netip.Addr, caCertPool *x509.CertPool) (*
 	httpTransport := &http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			if addr == u.Hostname()+":443" {
-				addr = net.JoinHostPort(DoHIP.String(), "443")
+				randomIndex, err := rand.Int(rand.Reader, big.NewInt(int64(len(DoHIP))))
+				if err != nil {
+					return nil, err
+				}
+
+				ip := DoHIP[randomIndex.Int64()]
+				addr = net.JoinHostPort(ip.String(), "443")
 			} else {
 				return nil, fmt.Errorf("unexpected address '%s'", addr)
 			}

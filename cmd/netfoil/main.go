@@ -70,13 +70,13 @@ func main() {
 
 	configureLogger(config)
 
-	conn, err := systemdSocketListener()
+	conn, tcpListener, err := systemdSocketListener()
 	if err != nil {
 		println(err.Error())
 	}
 
 	if conn == nil {
-		conn, err = bindService(options.IP, options.Port)
+		conn, tcpListener, err = bindService(options.IP, options.Port)
 		if err != nil {
 			println(err.Error())
 			os.Exit(1)
@@ -97,7 +97,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	err = dns.Server(conn, config, policy, caCertPool)
+	err = dns.Server(conn, tcpListener, config, policy, caCertPool)
 	if err != nil {
 		println(err.Error())
 		os.Exit(1)
@@ -179,6 +179,7 @@ func applySystemCallFilter(filter bool, caCertPool *x509.CertPool) error {
 			unix.SYS_PREAD64,
 
 			// @network-io
+			unix.SYS_ACCEPT4,
 			unix.SYS_CONNECT,
 			unix.SYS_GETPEERNAME,
 			unix.SYS_GETSOCKNAME,
@@ -293,19 +294,27 @@ func configureLogger(config *dns.Config) {
 	slog.SetDefault(logger)
 }
 
-func systemdSocketListener() (*net.UDPConn, error) {
+func systemdSocketListener() (*net.UDPConn, *net.TCPListener, error) {
 	if _, ok := os.LookupEnv("LISTEN_FDS"); ok {
-		f := os.NewFile(uintptr(3), "netfoil.socket")
+		f := os.NewFile(uintptr(3), "netfoil.socket.udp")
 
 		conn, err := net.FileConn(f)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
+		udpConnTyped := conn.(*net.UDPConn)
 
-		return conn.(*net.UDPConn), nil
+		g := os.NewFile(uintptr(4), "netfoil.socket.tcp")
+		tcpListener, err := net.FileListener(g)
+		if err != nil {
+			return nil, nil, err
+		}
+		tcpListenerTyped := tcpListener.(*net.TCPListener)
+
+		return udpConnTyped, tcpListenerTyped, nil
 	}
 
-	return nil, fmt.Errorf("systemd socket listener not configured")
+	return nil, nil, fmt.Errorf("systemd socket listener not configured")
 }
 
 type Options struct {
@@ -358,15 +367,24 @@ func processInput() (*Options, error) {
 	}, nil
 }
 
-func bindService(ip net.IP, port int) (*net.UDPConn, error) {
+func bindService(ip net.IP, port int) (*net.UDPConn, *net.TCPListener, error) {
 	addr := net.UDPAddr{
 		Port: port,
 		IP:   ip,
 	}
 	conn, err := net.ListenUDP("udp", &addr)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return conn, nil
+	tcpAddr := net.TCPAddr{
+		Port: port,
+		IP:   ip,
+	}
+	tcpListener, err := net.ListenTCP("tcp", &tcpAddr)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return conn, tcpListener, nil
 }

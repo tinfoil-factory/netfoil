@@ -43,7 +43,7 @@ type Policy struct {
 }
 
 func NewPolicy(configDirectory string, blockPunycode bool, pinResponseDomain bool) (*Policy, error) {
-	knownTLDs, err := readKnownTLDs(configDirectory)
+	knownTLDs, err := readKnownTLDs(configDirectory, Policy{})
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +53,7 @@ func NewPolicy(configDirectory string, blockPunycode bool, pinResponseDomain boo
 		blockPunycode: blockPunycode,
 	}
 
-	allowTLDs, err := readAndValidateTLDs(configDirectory, configFilenameAllowTLDs, knownTLDs)
+	allowTLDs, err := readAndValidateTLDs(configDirectory, configFilenameAllowTLDs, knownTLDs, partialPolicy)
 	if err != nil {
 		return nil, err
 	}
@@ -68,7 +68,7 @@ func NewPolicy(configDirectory string, blockPunycode bool, pinResponseDomain boo
 		return nil, err
 	}
 
-	blockTLDs, err := readAndValidateTLDs(configDirectory, configFilenameDenyTLDs, knownTLDs)
+	blockTLDs, err := readAndValidateTLDs(configDirectory, configFilenameDenyTLDs, knownTLDs, partialPolicy)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +151,7 @@ func NewPolicy(configDirectory string, blockPunycode bool, pinResponseDomain boo
 	}, nil
 }
 
-func readKnownTLDs(configDirectory string) (map[string]struct{}, error) {
+func readKnownTLDs(configDirectory string, policy Policy) (map[string]struct{}, error) {
 	tldList, err := readConfig(configDirectory, configFilenameKnownTLDs)
 	if err != nil {
 		return nil, err
@@ -169,8 +169,9 @@ func readKnownTLDs(configDirectory string) (map[string]struct{}, error) {
 		}
 
 		tldWithoutPrefix := strings.TrimPrefix(tld, expectedPrefix)
-		if !labelRegex.MatchString(tldWithoutPrefix) {
-			return nil, fmt.Errorf("%s '%s' ", configFilenameKnownTLDs, tld)
+		err := policy.labelHasCorrectFormat(tldWithoutPrefix)
+		if err != nil {
+			return nil, fmt.Errorf("%s '%s': %s", configFilenameKnownTLDs, tld, err.Error())
 		}
 
 		knownTLDs[tldWithoutPrefix] = struct{}{}
@@ -179,7 +180,7 @@ func readKnownTLDs(configDirectory string) (map[string]struct{}, error) {
 	return knownTLDs, nil
 }
 
-func readAndValidateTLDs(configDirectory string, filename string, knownTLDs map[string]struct{}) ([]string, error) {
+func readAndValidateTLDs(configDirectory string, filename string, knownTLDs map[string]struct{}, policy Policy) ([]string, error) {
 	TLDs, err := readConfig(configDirectory, filename)
 	if err != nil {
 		return nil, err
@@ -195,7 +196,13 @@ func readAndValidateTLDs(configDirectory string, filename string, knownTLDs map[
 			return nil, fmt.Errorf("%s '%s' needs to start with at '.'", filename, TLD)
 		}
 
-		_, found := knownTLDs[strings.TrimPrefix(TLD, expectedPrefix)]
+		tldWithoutPrefix := strings.TrimPrefix(TLD, expectedPrefix)
+		err := policy.labelHasCorrectFormat(tldWithoutPrefix)
+		if err != nil {
+			return nil, fmt.Errorf("%s '%s': %s", filename, TLD, err.Error())
+		}
+
+		_, found := knownTLDs[tldWithoutPrefix]
 		if !found {
 			return nil, fmt.Errorf("%s '%s' not present in known.tld", filename, TLD)
 		}
@@ -442,6 +449,7 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 	ipv4s := make(map[string]struct{})
 	ipv6s := make(map[string]struct{})
 	cnames := make(map[string]string)
+	httpsDomains := make(map[string]struct{})
 
 	for _, answer := range response.Answers {
 		if !supportedInResponses(answer.Type) {
@@ -462,8 +470,8 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 		}
 
 		if answer.Type == RecordTypeCNAME {
-			if !(requestType == RecordTypeA || requestType == RecordTypeAAAA) {
-				reason := fmt.Sprintf("deny due to CNAME response not matching request type 1 or 28: %d", answer.Type)
+			if !(requestType == RecordTypeA || requestType == RecordTypeAAAA || requestType == RecordTypeHTTPS) {
+				reason := fmt.Sprintf("deny due to CNAME response not matching request type A, AAAA or HTTPS: %d", answer.Type)
 				reasons = append(reasons, FilterReason(reason))
 				return false, reasons
 			}
@@ -522,6 +530,8 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 					DestinationDomain: echConfig.PublicName + ".",
 				})
 			}
+
+			httpsDomains[answer.Name] = struct{}{}
 		}
 	}
 
@@ -531,13 +541,29 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 		return false, reasons
 	}
 
+	if len(httpsDomains) > 1 {
+		reason := fmt.Sprintf("deny due to more than one domain with HTTPS records")
+		reasons = append(reasons, FilterReason(reason))
+		return false, reasons
+	}
+
 	if len(cnames) > 0 {
-		err := correctCNAMEChain(cnames, questionName, ipDomains)
-		if err != nil {
-			reason := FilterReason(err.Error())
-			reasons = append(reasons, reason)
-			return false, reasons
+		if requestType == RecordTypeHTTPS {
+			err := correctCNAMEChain(cnames, questionName, httpsDomains)
+			if err != nil {
+				reason := FilterReason(err.Error())
+				reasons = append(reasons, reason)
+				return false, reasons
+			}
+		} else {
+			err := correctCNAMEChain(cnames, questionName, ipDomains)
+			if err != nil {
+				reason := FilterReason(err.Error())
+				reasons = append(reasons, reason)
+				return false, reasons
+			}
 		}
+
 	}
 
 	uniqueDomains := make(map[string]struct{})
@@ -547,6 +573,10 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 	}
 
 	for domain := range ipDomains {
+		uniqueDomains[domain] = struct{}{}
+	}
+
+	for domain := range httpsDomains {
 		uniqueDomains[domain] = struct{}{}
 	}
 
@@ -630,13 +660,11 @@ func correctCNAMEChain(cnames map[string]string, start string, end map[string]st
 		currentDomain = entry
 	}
 
-	if len(end) != 1 {
-		return fmt.Errorf("missing IP record")
-	}
-
-	_, found := end[currentDomain]
-	if !found {
-		return fmt.Errorf("incomplete CNAME chain, missing IP record")
+	if len(end) == 1 {
+		_, found := end[currentDomain]
+		if !found {
+			return fmt.Errorf("incomplete CNAME chain, end does not match")
+		}
 	}
 
 	return nil
@@ -745,28 +773,37 @@ func (p *Policy) domainHasCorrectFormat(domain string) error {
 		return fmt.Errorf("domain is not at least two parts")
 	}
 
-	for _, part := range parts {
-		if len(part) > 63 {
-			return fmt.Errorf("label is too long")
-		}
-
-		if !labelRegex.Match([]byte(part)) {
-			return fmt.Errorf("illegal characters in label")
-		}
-
-		// TODO check for '-' in 3,4 spot?
-		// https://datatracker.ietf.org/doc/html/rfc5891#section-4.2.3.1
-
-		if p.blockPunycode {
-			if strings.HasPrefix(part, "xn--") {
-				return fmt.Errorf("punycode present")
-			}
+	for _, label := range parts {
+		err := p.labelHasCorrectFormat(label)
+		if err != nil {
+			return err
 		}
 	}
 
 	_, found := p.knownTLDs[parts[len(parts)-1]]
 	if !found {
 		return fmt.Errorf("not a valid TLD")
+	}
+
+	return nil
+}
+
+func (p *Policy) labelHasCorrectFormat(label string) error {
+	if len(label) > 63 {
+		return fmt.Errorf("label is too long")
+	}
+
+	if !labelRegex.Match([]byte(label)) {
+		return fmt.Errorf("illegal characters in label")
+	}
+
+	// TODO check for '-' in 3,4 spot?
+	// https://datatracker.ietf.org/doc/html/rfc5891#section-4.2.3.1
+
+	if p.blockPunycode {
+		if strings.HasPrefix(label, "xn--") {
+			return fmt.Errorf("punycode present")
+		}
 	}
 
 	return nil
@@ -850,20 +887,6 @@ func (p *Policy) ipv6IsAllowed(ipString string) (bool, FilterReason) {
 	return false, FilterReason(reason)
 }
 
-func generateBlockResponse() *Response {
-	var response *Response
-	flags := Flags{
-		RCODE: ResponseCodeNXDomain,
-	}
-
-	response = &Response{
-		Flags:   flags,
-		Answers: nil,
-	}
-
-	return response
-}
-
 func generateAResponse(question *Question, ip net.IP) *Response {
 	domain := question.Name
 	recordType := question.Type
@@ -887,24 +910,4 @@ func generateAResponse(question *Question, ip net.IP) *Response {
 	}
 
 	return response
-}
-
-func generateNoDataResponse() *Response {
-	flags := Flags{
-		RCODE: ResponseCodeNoError,
-	}
-	return &Response{
-		Flags:   flags,
-		Answers: []Answer{},
-	}
-}
-
-func generateNotImplementedResponse() *Response {
-	flags := Flags{
-		RCODE: ResponseCodeNotImp,
-	}
-	return &Response{
-		Flags:   flags,
-		Answers: []Answer{},
-	}
 }

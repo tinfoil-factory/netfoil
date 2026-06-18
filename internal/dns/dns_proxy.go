@@ -1,10 +1,15 @@
 package dns
 
 import (
+	"bytes"
 	"crypto/x509"
+	"encoding/binary"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
+	"os"
 	"slices"
 	"strings"
 	"time"
@@ -12,10 +17,19 @@ import (
 	"github.com/tinfoil-factory/netfoil/internal/lru"
 )
 
+type ConnectionType string
+
+const (
+	ConnectionTypeUDP = "UDP"
+	ConnectionTypeTCP = "TCP"
+)
+
 type workerTask struct {
 	rawRequest     []byte
 	responseLength int
-	remote         *net.UDPAddr
+	udpRemote      *net.UDPAddr
+	connectionType ConnectionType
+	remote         string
 }
 
 type workerResult struct {
@@ -40,6 +54,7 @@ type worker struct {
 	taskQueue      <-chan workerTask
 	resultsChannel chan<- workerResult
 	policy         *Policy
+	tcpConnQueue   <-chan *net.TCPConn
 }
 
 type timedResponse struct {
@@ -73,8 +88,8 @@ func (t *timedResponse) rewriteTTLs() (result *Response, stillValid bool) {
 	return result, ok
 }
 
-func Server(conn *net.UDPConn, config *Config, policy *Policy, caCertPool *x509.CertPool) error {
-	dohClient, err := NewDoHClient(config.DoHURL, config.DoHIPs[0], caCertPool)
+func Server(conn *net.UDPConn, tcpListener *net.TCPListener, config *Config, policy *Policy, caCertPool *x509.CertPool) error {
+	dohClient, err := NewDoHClient(config.DoHURL, config.DoHIPs, caCertPool)
 	if err != nil {
 		return err
 	}
@@ -109,8 +124,51 @@ func Server(conn *net.UDPConn, config *Config, policy *Policy, caCertPool *x509.
 			if result.marshalledResponse != nil {
 				_, err = conn.WriteToUDP(result.marshalledResponse, result.remote)
 				if err != nil {
-					fmt.Printf("error: failed to write response: %s\n", err.Error())
+					fmt.Printf("error: failed to write UDP response: %s\n", err.Error())
 				}
+			}
+		}
+	}()
+
+	maxTCPWorkers := 10
+	tcpConnQueue := make(chan *net.TCPConn, 50)
+
+	for i := 0; i < maxTCPWorkers; i++ {
+		tcpWorker := &worker{
+			cache:          cache,
+			config:         config,
+			dohClient:      dohClient,
+			taskQueue:      tasksChannel,
+			resultsChannel: resultsChannel,
+			policy:         policy,
+			tcpConnQueue:   tcpConnQueue,
+		}
+		tcpWorker.startTCP()
+	}
+
+	go func() {
+		for {
+			conn, err := tcpListener.Accept()
+			if err != nil {
+				err = fmt.Errorf("error: failed to accept connection: %w\n", err)
+				resultsChannel <- workerResult{
+					err: err,
+				}
+				continue
+			}
+			tcpConn := conn.(*net.TCPConn)
+
+			select {
+			case tcpConnQueue <- tcpConn:
+			default:
+				err = conn.Close()
+				if err != nil {
+					err = fmt.Errorf("error: %w\n", err)
+					resultsChannel <- workerResult{
+						err: err,
+					}
+				}
+				continue
 			}
 		}
 	}()
@@ -119,7 +177,12 @@ func Server(conn *net.UDPConn, config *Config, policy *Policy, caCertPool *x509.
 		buf := make([]byte, 1024)
 		responseLength, remote, err := conn.ReadFromUDP(buf[:])
 		if err != nil {
-			fmt.Printf("error: reading from udp: %s\n", err.Error())
+			err = fmt.Errorf("error: reading from UDP: %w\n", err)
+
+			resultsChannel <- workerResult{
+				err: err,
+			}
+
 			continue
 		}
 
@@ -127,10 +190,189 @@ func Server(conn *net.UDPConn, config *Config, policy *Policy, caCertPool *x509.
 			workerTask := workerTask{
 				rawRequest:     buf,
 				responseLength: responseLength,
-				remote:         remote,
+				udpRemote:      remote,
+				remote:         remote.String(),
+				connectionType: ConnectionTypeUDP,
 			}
 
 			tasksChannel <- workerTask
+		}
+	}
+}
+
+func (w *worker) handleTCPConnection(conn *net.TCPConn) {
+	request := bytes.Buffer{}
+	buf := make([]byte, 1024)
+
+	var length *int = nil
+	for {
+		err := conn.SetReadDeadline(time.Now().Add(tcpServerReadWriteTimeout))
+		if err != nil {
+			err := fmt.Errorf("error: failed to set read deadline: %s\n", err.Error())
+			closeErr := conn.Close()
+			if closeErr != nil {
+				err = fmt.Errorf("error: %w %w\n", err, closeErr)
+			}
+
+			w.resultsChannel <- workerResult{
+				err: err,
+			}
+
+			return
+		}
+
+	continueRead:
+		if length != nil || request.Len() < 2 {
+			readLength := len(buf)
+			if length != nil && *length < readLength {
+				readLength = *length
+			}
+
+			responseLength, err := conn.Read(buf[:readLength])
+			if err != nil {
+				if errors.Is(err, net.ErrClosed) {
+					// ignore
+					err = nil
+				} else if errors.Is(err, io.EOF) {
+					// ignore
+					err = nil
+				} else if errors.Is(err, os.ErrDeadlineExceeded) {
+					// ignore
+					err = nil
+				} else {
+					err = fmt.Errorf("error: reading from TCP: %w\n", err)
+				}
+				closeErr := conn.Close()
+				if closeErr != nil {
+					if err != nil {
+						err = fmt.Errorf("error: %w %w\n", err, closeErr)
+					} else {
+						err = fmt.Errorf("error: failed to close TCP: %w\n", closeErr)
+					}
+				}
+
+				if err != nil {
+					w.resultsChannel <- workerResult{
+						err: err,
+					}
+				}
+
+				return
+			}
+
+			request.Write(buf[:responseLength])
+		}
+
+		if request.Len() < 2 {
+			goto continueRead
+		}
+
+		if length == nil {
+			l := int(binary.BigEndian.Uint16(request.Bytes()[0:2]))
+			length = &l
+		}
+
+		requestTotalLength := *length + 2
+		if request.Len() < requestTotalLength {
+			goto continueRead
+		}
+
+		workerTask := workerTask{
+			rawRequest:     request.Bytes()[2:requestTotalLength],
+			responseLength: *length,
+			udpRemote:      nil,
+			connectionType: ConnectionTypeTCP,
+			remote:         conn.RemoteAddr().String(),
+		}
+
+		start := time.Now()
+		result, err := w.process(&workerTask)
+		elapsed := time.Since(start)
+
+		w.resultsChannel <- workerResult{
+			remote:          nil,
+			question:        result.question,
+			response:        result.response,
+			allowed:         result.allowed,
+			cacheHit:        result.cacheHit,
+			externalRequest: result.externalRequest,
+			pinned:          result.pinned,
+			logEvents:       result.logEvents,
+			filterReasons:   result.filterReasons,
+			time:            elapsed,
+			err:             err,
+		}
+
+		if request.Len() > requestTotalLength {
+			residual := slices.Clone(request.Bytes()[requestTotalLength:])
+			request.Reset()
+			request.Write(residual)
+		} else {
+			request.Reset()
+		}
+		length = nil
+
+		if result.marshalledResponse != nil {
+			bf := bytes.Buffer{}
+			err := binary.Write(&bf, binary.BigEndian, uint16(len(result.marshalledResponse)))
+			if err != nil {
+				err = fmt.Errorf("error marshalling TCP length: %w", err)
+				closeErr := conn.Close()
+				if closeErr != nil {
+					err = fmt.Errorf("error: %w %w\n", err, closeErr)
+				}
+
+				w.resultsChannel <- workerResult{
+					err: err,
+				}
+
+				return
+			}
+
+			err = conn.SetWriteDeadline(time.Now().Add(tcpServerReadWriteTimeout))
+			if err != nil {
+				err = fmt.Errorf("error: failed to set write deadline: %w", err)
+				closeErr := conn.Close()
+				if closeErr != nil {
+					err = fmt.Errorf("error: %w %w\n", err, closeErr)
+				}
+
+				w.resultsChannel <- workerResult{
+					err: err,
+				}
+
+				return
+			}
+
+			_, err = conn.Write(bf.Bytes())
+			if err != nil {
+				err = fmt.Errorf("error: failed to write TCP length: %w", err)
+				closeErr := conn.Close()
+				if closeErr != nil {
+					err = fmt.Errorf("error: %w %w\n", err, closeErr)
+				}
+
+				w.resultsChannel <- workerResult{
+					err: err,
+				}
+
+				return
+			}
+
+			_, err = conn.Write(result.marshalledResponse)
+			if err != nil {
+				err = fmt.Errorf("error: failed to write TCP response: %w", err)
+				closeErr := conn.Close()
+				if closeErr != nil {
+					err = fmt.Errorf("error: %w %w\n", err, closeErr)
+				}
+
+				w.resultsChannel <- workerResult{
+					err: err,
+				}
+
+				return
+			}
 		}
 	}
 }
@@ -239,7 +481,7 @@ func (w *worker) start() {
 			elapsed := time.Since(start)
 
 			w.resultsChannel <- workerResult{
-				remote:             task.remote,
+				remote:             task.udpRemote,
 				question:           result.question,
 				response:           result.response,
 				marshalledResponse: result.marshalledResponse,
@@ -252,6 +494,14 @@ func (w *worker) start() {
 				time:               elapsed,
 				err:                err,
 			}
+		}
+	}()
+}
+
+func (w *worker) startTCP() {
+	go func() {
+		for conn := range w.tcpConnQueue {
+			w.handleTCPConnection(conn)
 		}
 	}()
 }
@@ -291,11 +541,16 @@ func (w *worker) process(workerTask *workerTask) (processResponse, error) {
 
 	// FIXME check for too large requests
 	responseLength := workerTask.responseLength
-	remote := workerTask.remote
 	buf := workerTask.rawRequest
 	policy := w.policy
 
-	result.appendLogEvent(LogEvent(fmt.Sprintf("query from: %s", remote.String())))
+	isTCP := false
+	if workerTask.connectionType == ConnectionTypeTCP {
+		isTCP = true
+		result.appendLogEvent(LogEvent(fmt.Sprintf("query from: %s [TCP]", workerTask.remote)))
+	} else {
+		result.appendLogEvent(LogEvent(fmt.Sprintf("query from: %s [UDP]", workerTask.remote)))
+	}
 
 	request, err := UnmarshalRequest(buf[:responseLength])
 	if err != nil {
@@ -397,8 +652,13 @@ func (w *worker) process(workerTask *workerTask) (processResponse, error) {
 		l := fmt.Sprintf("unsupported request type %d", question.Type)
 		result.appendLogEvent(LogEvent(l))
 
-		// FIXME what is the best response?
-		result.response = generateNotImplementedResponse()
+		notImplementedResponse, marshalErr := MarshalNotImplementedResponse(request)
+		if marshalErr != nil {
+			return result, fmt.Errorf("failed to marshal not implemented response '%w'", marshalErr)
+		}
+
+		result.marshalledResponse = notImplementedResponse
+		return result, nil
 	}
 
 	for i, answer := range result.response.Answers {
@@ -419,7 +679,7 @@ func (w *worker) process(workerTask *workerTask) (processResponse, error) {
 		result.response.Answers[i] = answer
 	}
 
-	marshalledResponse, err := MarshalResponse(request, result.response)
+	marshalledResponse, err := MarshalResponse(request, result.response, isTCP)
 	if err != nil {
 		return result, fmt.Errorf("failed to marshal response '%w'", err)
 	}

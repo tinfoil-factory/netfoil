@@ -49,7 +49,7 @@ SystemCallFilter=close read write pread64
 SystemCallFilter=access fcntl fstat getdents64 openat readlinkat
 
 # @network-io (9/22)
-SystemCallFilter=connect getpeername getsockname getsockopt recvfrom sendto setsockopt socket
+SystemCallFilter=accept4 connect getpeername getsockname getsockopt recvfrom sendto setsockopt socket
 
 # @signal (3/14)
 SystemCallFilter=rt_sigaction rt_sigprocmask sigaltstack

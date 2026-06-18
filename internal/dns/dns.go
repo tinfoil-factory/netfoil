@@ -17,7 +17,8 @@ type Request struct {
 	TransactionID uint16
 	Flags         Flags
 
-	Question Question
+	Question             Question
+	RequestorPayloadSize uint16
 }
 
 type Response struct {
@@ -540,6 +541,48 @@ func readClass(buffer *bytes.Buffer) (ClassType, error) {
 	}
 
 	return c, nil
+}
+
+func readEDNS(data []byte, buffer *bytes.Buffer) (uint16, error) {
+	name, err := readDomain(data, buffer)
+	if err != nil {
+		return 0, err
+	}
+
+	if name != "." {
+		return 0, fmt.Errorf("EDNS domain must be '.'")
+	}
+
+	t, err := readType(buffer)
+	if err != nil {
+		return 0, err
+	}
+
+	if t != 41 {
+		return 0, fmt.Errorf("EDNS type must be 41")
+	}
+
+	payloadSize := uint16(0)
+	err = binary.Read(buffer, binary.BigEndian, &payloadSize)
+	if err != nil {
+		return 0, err
+	}
+
+	// Ignore value
+	extendedRCODEAndFlags := uint32(0)
+	err = binary.Read(buffer, binary.BigEndian, &extendedRCODEAndFlags)
+	if err != nil {
+		return 0, err
+	}
+
+	// According to RFC 6891 section 6.1.2 any option codes not understood must be ignored.
+	// None are currently implemented.
+	_, err = readArray16(buffer)
+	if err != nil {
+		return 0, err
+	}
+
+	return payloadSize, nil
 }
 
 func writeClass(buffer *bytes.Buffer, c ClassType) error {

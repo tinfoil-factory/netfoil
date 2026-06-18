@@ -7,26 +7,64 @@ import (
 	"net"
 )
 
-const maxNumberOfCnameRecords = 10
+const (
+	maxNumberOfCnameRecords = 10
+	maxNumberOfIPv4Records  = 10
+	maxNumberOfIPv6Records  = 10
+	maxNumberOfHTTPSRecords = 10
+	headerLength            = 12
+	tcpMaxPayloadSize       = 65535
+)
 
-func MarshalResponse(request *Request, response *Response) ([]byte, error) {
-	var numberOfAnswers uint16
-	var rcode ResponseCode
-
-	// FIXME serialize response as is
+func MarshalResponse(request *Request, response *Response, isTCP bool) ([]byte, error) {
 	q := request.Question
-	if q.Type == RecordTypeA {
-		numberOfAnswers = uint16(len(response.Answers))
-		rcode = response.Flags.RCODE
-	} else if q.Type == RecordTypeAAAA {
-		numberOfAnswers = uint16(len(response.Answers))
-		rcode = response.Flags.RCODE
-	} else if q.Type == RecordTypeHTTPS {
-		numberOfAnswers = uint16(len(response.Answers))
-		rcode = response.Flags.RCODE
-	} else {
-		numberOfAnswers = 0
-		rcode = response.Flags.RCODE
+	switch q.Type {
+	case RecordTypeA:
+	case RecordTypeAAAA:
+	case RecordTypeHTTPS:
+	default:
+		return nil, fmt.Errorf("unsupported question type")
+	}
+
+	truncation := false
+	maxLength := int(request.RequestorPayloadSize)
+	initialBufferLength := maxLength
+	if isTCP {
+		maxLength = tcpMaxPayloadSize
+		initialBufferLength = int(ednsMaxPayloadSize)
+	}
+
+	questionAndAnswerBuffer := bytes.NewBuffer(make([]byte, 0, initialBufferLength))
+
+	headerPlaceholder := make([]byte, headerLength)
+	_, err := questionAndAnswerBuffer.Write(headerPlaceholder)
+	if err != nil {
+		return nil, err
+	}
+
+	err = writeQuestion(questionAndAnswerBuffer, q)
+	if err != nil {
+		return nil, err
+	}
+
+	numberOfAnswers := uint16(0)
+	for _, answer := range response.Answers {
+		answerBuffer := &bytes.Buffer{}
+		err = writeAnswer(answerBuffer, answer)
+		if err != nil {
+			return nil, err
+		}
+
+		if maxLength-questionAndAnswerBuffer.Len()-answerBuffer.Len() >= 0 {
+			questionAndAnswerBuffer.Write(answerBuffer.Bytes())
+			numberOfAnswers++
+		} else {
+			// TODO what to do in this case?
+			if !isTCP {
+				truncation = true
+			}
+			break
+		}
 	}
 
 	f := Flags{
@@ -35,13 +73,13 @@ func MarshalResponse(request *Request, response *Response) ([]byte, error) {
 		OPCODE: 0,
 		// TODO pass AA answer vs leak underlying resolver?
 		AA:    false,
-		TC:    response.Flags.TC,
+		TC:    truncation,
 		RD:    request.Flags.RD,
-		RA:    response.Flags.RA,
+		RA:    true,
 		Z:     false,
 		AD:    false,
 		CD:    false,
-		RCODE: rcode,
+		RCODE: response.Flags.RCODE,
 	}
 
 	packedFlags := MarshalFlags(f)
@@ -55,28 +93,26 @@ func MarshalResponse(request *Request, response *Response) ([]byte, error) {
 		NumberOfAdditionalRRs: 0,
 	}
 
-	rp := &bytes.Buffer{}
-	err := writeHeader(rp, header)
+	result := questionAndAnswerBuffer.Bytes()
+
+	headerBuffer := &bytes.Buffer{}
+	err = writeHeader(headerBuffer, header)
 	if err != nil {
 		return nil, err
 	}
 
-	err = writeQuestion(rp, q)
-	if err != nil {
-		return nil, err
+	headerBytes := headerBuffer.Bytes()
+	if len(headerBytes) != headerLength {
+		return nil, fmt.Errorf("wrong header length, expected %d, got %d", headerLength, len(headerBytes))
 	}
 
-	if q.Type == RecordTypeA || q.Type == RecordTypeAAAA || q.Type == RecordTypeHTTPS {
-		// Response
-		for _, answer := range response.Answers {
-			err = writeAnswer(rp, answer)
-			if err != nil {
-				return nil, err
-			}
-		}
+	copy(result[0:12], headerBytes)
+
+	if len(result) > maxLength {
+		return nil, fmt.Errorf("response too long, expected max %d, got %d)", maxLength, len(result))
 	}
 
-	return rp.Bytes(), nil
+	return result, nil
 }
 
 func MarshalEmptyFormatError(buffer []byte) ([]byte, error) {
@@ -89,6 +125,7 @@ func MarshalEmptyFormatError(buffer []byte) ([]byte, error) {
 		QR:     true, // this is a response
 		OPCODE: 0,
 		RCODE:  ResponseCodeFormatError,
+		RA:     true,
 	}
 
 	header := &Header{
@@ -114,6 +151,7 @@ func MarshalServerFailure(request *Request) ([]byte, error) {
 		QR:     true, // this is a response
 		OPCODE: 0,
 		RCODE:  ResponseCodeServFail,
+		RA:     true,
 	}
 
 	header := &Header{
@@ -137,6 +175,54 @@ func MarshalServerFailure(request *Request) ([]byte, error) {
 	}
 
 	return rp.Bytes(), nil
+}
+
+func MarshalNotImplementedResponse(request *Request) ([]byte, error) {
+	flags := Flags{
+		QR:     true, // this is a response
+		OPCODE: 0,
+		RCODE:  ResponseCodeNotImp,
+		RA:     true,
+	}
+
+	header := &Header{
+		TransactionID:         request.TransactionID,
+		Flags:                 MarshalFlags(flags),
+		NumberOfQuestions:     1,
+		NumberOfAnswers:       0,
+		NumberOfAuthorityRRs:  0,
+		NumberOfAdditionalRRs: 0,
+	}
+
+	rp := &bytes.Buffer{}
+	err := writeHeader(rp, header)
+	if err != nil {
+		return nil, err
+	}
+
+	err = writeQuestion(rp, request.Question)
+	if err != nil {
+		return nil, err
+	}
+
+	return rp.Bytes(), nil
+}
+
+func generateBlockResponse() *Response {
+	var response *Response
+	flags := Flags{
+		QR:     true, // this is a response
+		OPCODE: 0,
+		RCODE:  ResponseCodeNXDomain,
+		RA:     true,
+	}
+
+	response = &Response{
+		Flags:   flags,
+		Answers: nil,
+	}
+
+	return response
 }
 
 func UnmarshalResponse(data []byte) (*Response, error) {
@@ -188,6 +274,9 @@ func UnmarshalResponse(data []byte) (*Response, error) {
 	// https://datatracker.ietf.org/doc/html/rfc1035#section-4.1.3
 	answers := make([]Answer, 0)
 	cnames := make(map[string]struct{})
+	IPv4Count := 0
+	IPv6Count := 0
+	HTTPSCount := 0
 	for i := 0; i < int(header.NumberOfAnswers); i++ {
 		name, err := readDomain(data, p)
 		if err != nil {
@@ -232,6 +321,11 @@ func UnmarshalResponse(data []byte) (*Response, error) {
 
 			ip := net.IPv4(rawData[0], rawData[1], rawData[2], rawData[3])
 			a.IPv4 = ip.To4()
+
+			IPv4Count++
+			if IPv4Count > maxNumberOfIPv4Records {
+				return nil, fmt.Errorf("too many IPv4 records")
+			}
 		case RecordTypeAAAA:
 			if len(rawData) != 16 {
 				return nil, fmt.Errorf("invalid IPv6 length in response")
@@ -239,12 +333,22 @@ func UnmarshalResponse(data []byte) (*Response, error) {
 
 			ip := net.IP(rawData)
 			a.IPv6 = ip
+
+			IPv6Count++
+			if IPv6Count > maxNumberOfIPv6Records {
+				return nil, fmt.Errorf("too many IPv4 records")
+			}
 		case RecordTypeHTTPS:
 			r, err := unmarshalHTTPSRecord(rawData)
 			if err != nil {
 				return nil, err
 			}
 			a.HTTPSRecord = *r
+
+			HTTPSCount++
+			if HTTPSCount > maxNumberOfHTTPSRecords {
+				return nil, fmt.Errorf("too many IPv4 records")
+			}
 		case RecordTypeCNAME:
 			pb := bytes.NewBuffer(rawData)
 			domain, err := readDomain(data, pb)
@@ -271,8 +375,8 @@ func UnmarshalResponse(data []byte) (*Response, error) {
 		answers = append(answers, a)
 	}
 
-	if flags.RCODE != ResponseCodeNoError && len(answers) > 0 {
-		return nil, fmt.Errorf("answers in a response with error %s", flags.RCODE.Name())
+	if flags.RCODE == ResponseCodeNXDomain && len(answers) != len(cnames) {
+		return nil, fmt.Errorf("non-CNAME answers in a NXDomain response")
 	}
 
 	// FIXME consume authority sections as well

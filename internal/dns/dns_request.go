@@ -5,6 +5,11 @@ import (
 	"fmt"
 )
 
+const (
+	defaultPayloadSize = uint16(512)
+	ednsMaxPayloadSize = uint16(4096)
+)
+
 func UnmarshalRequest(data []byte) (*Request, error) {
 	// fmt.Printf("original: %s\n", base64.URLEncoding.EncodeToString(data))
 	buffer := bytes.NewBuffer(data)
@@ -26,8 +31,8 @@ func UnmarshalRequest(data []byte) (*Request, error) {
 		return nil, fmt.Errorf("expected no authority RRs, got %d", header.NumberOfAuthorityRRs)
 	}
 
-	if header.NumberOfAdditionalRRs != 0 {
-		return nil, fmt.Errorf("expected no additional RRs, got %d", header.NumberOfAdditionalRRs)
+	if header.NumberOfAdditionalRRs > 1 {
+		return nil, fmt.Errorf("expected at most one additional RR, got %d", header.NumberOfAdditionalRRs)
 	}
 
 	flags := UnmarshalFlags(header.Flags)
@@ -90,14 +95,31 @@ func UnmarshalRequest(data []byte) (*Request, error) {
 		Class: class,
 	}
 
+	requestorPayloadSize := defaultPayloadSize
+	if header.NumberOfAdditionalRRs > 0 {
+		payloadSize, err := readEDNS(data, buffer)
+		if err != nil {
+			return nil, err
+		}
+
+		if payloadSize > requestorPayloadSize {
+			requestorPayloadSize = payloadSize
+		}
+
+		if requestorPayloadSize > ednsMaxPayloadSize {
+			requestorPayloadSize = ednsMaxPayloadSize
+		}
+	}
+
 	if buffer.Len() != 0 {
 		return nil, fmt.Errorf("unexpected data at the end")
 	}
 
 	return &Request{
-		TransactionID: header.TransactionID,
-		Flags:         flags,
-		Question:      question,
+		TransactionID:        header.TransactionID,
+		Flags:                flags,
+		Question:             question,
+		RequestorPayloadSize: requestorPayloadSize,
 	}, nil
 }
 
