@@ -375,8 +375,8 @@ func UnmarshalResponse(data []byte) (*Response, error) {
 		answers = append(answers, a)
 	}
 
-	if flags.RCODE != ResponseCodeNoError && len(answers) > 0 {
-		return nil, fmt.Errorf("answers in a response with error %s", flags.RCODE.Name())
+	if flags.RCODE == ResponseCodeNXDomain && len(answers) != len(cnames) {
+		return nil, fmt.Errorf("non-CNAME answers in a NXDomain response")
 	}
 
 	// FIXME consume authority sections as well
