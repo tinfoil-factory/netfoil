@@ -317,36 +317,61 @@ func (w *worker) handleTCPConnection(conn *net.TCPConn) {
 			err := binary.Write(&bf, binary.BigEndian, uint16(len(result.marshalledResponse)))
 			if err != nil {
 				err = fmt.Errorf("error marshalling TCP length: %w", err)
+				closeErr := conn.Close()
+				if closeErr != nil {
+					err = fmt.Errorf("error: %w %w\n", err, closeErr)
+				}
+
 				w.resultsChannel <- workerResult{
 					err: err,
 				}
-				continue
+
+				return
 			}
 
 			err = conn.SetWriteDeadline(time.Now().Add(tcpServerReadWriteTimeout))
 			if err != nil {
 				err = fmt.Errorf("error: failed to set write deadline: %w", err)
+				closeErr := conn.Close()
+				if closeErr != nil {
+					err = fmt.Errorf("error: %w %w\n", err, closeErr)
+				}
+
 				w.resultsChannel <- workerResult{
 					err: err,
 				}
-				continue
+
+				return
 			}
 
 			_, err = conn.Write(bf.Bytes())
 			if err != nil {
 				err = fmt.Errorf("error: failed to write TCP length: %w", err)
+				closeErr := conn.Close()
+				if closeErr != nil {
+					err = fmt.Errorf("error: %w %w\n", err, closeErr)
+				}
+
 				w.resultsChannel <- workerResult{
 					err: err,
 				}
-				continue
+
+				return
 			}
 
 			_, err = conn.Write(result.marshalledResponse)
 			if err != nil {
 				err = fmt.Errorf("error: failed to write TCP response: %w", err)
+				closeErr := conn.Close()
+				if closeErr != nil {
+					err = fmt.Errorf("error: %w %w\n", err, closeErr)
+				}
+
 				w.resultsChannel <- workerResult{
 					err: err,
 				}
+
+				return
 			}
 		}
 	}
