@@ -585,6 +585,10 @@ func (p *Policy) responseIsAllowed(questionName string, requestType RecordType, 
 		uniqueDomains[domain] = struct{}{}
 	}
 
+	for domain := range httpsDomains {
+		uniqueDomains[domain] = struct{}{}
+	}
+
 	for domain := range uniqueDomains {
 		correctFormat, reason := p.domainHasCorrectFormatWithTrailingDot(domain)
 		if !correctFormat {
