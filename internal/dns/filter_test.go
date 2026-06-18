@@ -196,6 +196,17 @@ func TestCorrectCNAMEChain(t *testing.T) {
 	}
 }
 
+func TestCorrectCNAMEChainNoEnd(t *testing.T) {
+	var cnames = make(map[string]string)
+	cnames["a.com"] = "b.com"
+	cnames["b.com"] = "c.com"
+
+	err := correctCNAMEChain(cnames, "a.com", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestUnrelatedCNAMERecords(t *testing.T) {
 	var cnames = make(map[string]string)
 	cnames["a.com"] = "b.com"
@@ -258,6 +269,24 @@ func TestLoopInCNAMEChain(t *testing.T) {
 		t.Fatalf("should fail")
 	}
 	expectedErr := "loop in CNAME chain"
+	if err.Error() != expectedErr {
+		t.Fatalf("expected '%s', got '%s'", expectedErr, err.Error())
+	}
+}
+
+func TestCNAMEChainWrongEnd(t *testing.T) {
+	var cnames = make(map[string]string)
+	cnames["a.com"] = "b.com"
+	cnames["b.com"] = "c.com"
+
+	end := make(map[string]struct{})
+	end["d.com"] = struct{}{}
+
+	err := correctCNAMEChain(cnames, "a.com", end)
+	if err == nil {
+		t.Fatalf("should fail")
+	}
+	expectedErr := "incomplete CNAME chain, end does not match"
 	if err.Error() != expectedErr {
 		t.Fatalf("expected '%s', got '%s'", expectedErr, err.Error())
 	}
