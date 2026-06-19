@@ -42,11 +42,12 @@ func (c *DoHClient) DoH(request *Request) (*Response, error) {
 	r := base64.URLEncoding.EncodeToString(marshalledRequest)
 	r = strings.TrimRight(r, "=")
 
-	queryParams := c.dohURL.Query()
+	u := *c.dohURL
+	queryParams := u.Query()
 	queryParams.Set("dns", r)
-	c.dohURL.RawQuery = queryParams.Encode()
+	u.RawQuery = queryParams.Encode()
 
-	req, err := http.NewRequest("GET", c.dohURL.String(), nil)
+	req, err := http.NewRequest("GET", u.String(), nil)
 	if err != nil {
 		return nil, err
 	}
