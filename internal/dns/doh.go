@@ -30,7 +30,7 @@ const (
 
 type DoHClient struct {
 	httpClient *http.Client
-	dohURL     string
+	dohURL     *url.URL
 }
 
 func (c *DoHClient) DoH(request *Request) (*Response, error) {
@@ -42,7 +42,11 @@ func (c *DoHClient) DoH(request *Request) (*Response, error) {
 	r := base64.URLEncoding.EncodeToString(marshalledRequest)
 	r = strings.TrimRight(r, "=")
 
-	req, err := http.NewRequest("GET", c.dohURL+"?dns="+r, nil)
+	queryParams := c.dohURL.Query()
+	queryParams.Set("dns", r)
+	c.dohURL.RawQuery = queryParams.Encode()
+
+	req, err := http.NewRequest("GET", c.dohURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -91,20 +95,7 @@ func (c *DoHClient) DoH(request *Request) (*Response, error) {
 
 }
 
-func NewDoHClient(dohURL string, DoHIP []netip.Addr, caCertPool *x509.CertPool) (*DoHClient, error) {
-	u, err := url.Parse(dohURL)
-	if err != nil {
-		return nil, err
-	}
-
-	if u.Scheme != "https" {
-		return nil, fmt.Errorf("DoH URL must use HTTPS: %s", u)
-	}
-
-	if u.Hostname() == "" {
-		return nil, fmt.Errorf("DoH URL must have a hostname: %s", u)
-	}
-
+func NewDoHClient(dohURL *url.URL, DoHIP []netip.Addr, caCertPool *x509.CertPool) (*DoHClient, error) {
 	dialer := &net.Dialer{
 		Timeout:   timeout,
 		KeepAlive: keepAliveProbeTime,
@@ -118,7 +109,7 @@ func NewDoHClient(dohURL string, DoHIP []netip.Addr, caCertPool *x509.CertPool) 
 
 	httpTransport := &http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			if addr == u.Hostname()+":443" {
+			if addr == dohURL.Hostname()+":443" {
 				randomIndex, err := rand.Int(rand.Reader, big.NewInt(int64(len(DoHIP))))
 				if err != nil {
 					return nil, err
