@@ -28,7 +28,7 @@ LogLevel=debug`
 		t.Fatalf("failed to parse config: %v", err)
 	}
 
-	if config.DoHURL != "https://example.com/dns-query" {
+	if config.DoHURL.String() != "https://example.com/dns-query" {
 		t.Errorf("wrong DoHURL")
 	}
 
@@ -147,7 +147,7 @@ DoHIPs=a.0.0.0`
 		t.Fatalf("parsing should fail")
 	}
 
-	expectedError := "ParseAddr(\"a.0.0.0\"): unexpected character (at \"a.0.0.0\")"
+	expectedError := "config DoHIPs= invalid IP 'a.0.0.0'"
 	if err.Error() != expectedError {
 		t.Fatalf("expected '%s', got '%s'", expectedError, err.Error())
 	}

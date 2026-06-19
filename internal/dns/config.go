@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"math"
 	"net/netip"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -32,7 +33,7 @@ const (
 )
 
 type Config struct {
-	DoHURL            string
+	DoHURL            *url.URL
 	DoHIPs            []netip.Addr
 	MinTTL            uint32
 	MaxTTL            uint32
@@ -112,7 +113,7 @@ func (c *ConfigMap) GetBool(key ConfigKey, defaultValue bool) (bool, error) {
 	if stringValue != "" {
 		v, err := strconv.ParseBool(stringValue)
 		if err != nil {
-			return false, fmt.Errorf("invalid bool config value '%s': %s", key, stringValue)
+			return false, fmt.Errorf("config %s= invalid bool '%s'", key, stringValue)
 		}
 		result = v
 	}
@@ -131,7 +132,7 @@ func (c *ConfigMap) GetLogLevel(key ConfigKey, defaultValue slog.Level) (slog.Le
 		case "debug":
 			result = slog.LevelDebug
 		default:
-			return 0, fmt.Errorf("unsupported log level '%s'", stringValue)
+			return 0, fmt.Errorf("config %s= unsupported value '%s'", key, stringValue)
 		}
 	}
 
@@ -145,7 +146,7 @@ func (c *ConfigMap) GetUint32(key ConfigKey, defaultValue uint32) (uint32, error
 	if stringValue != "" {
 		v, err := strconv.ParseUint(stringValue, 10, 32)
 		if err != nil {
-			return 0, fmt.Errorf("invalid uint32 config value '%s': %s", key, stringValue)
+			return 0, fmt.Errorf("config %s= invalid uint32 value '%s'", key, stringValue)
 		}
 		result = uint32(v)
 	}
@@ -153,27 +154,64 @@ func (c *ConfigMap) GetUint32(key ConfigKey, defaultValue uint32) (uint32, error
 	return result, nil
 }
 
-func (c *ConfigMap) GetRequiredString(key ConfigKey) (string, error) {
+func (c *ConfigMap) GetRequiredDoHURL() (*url.URL, error) {
+	key := keyDohURL
 	stringValue := c.m[key]
 	if stringValue == "" {
-		return "", fmt.Errorf("required config '%s' missing", key)
+		return nil, fmt.Errorf("config %s= missing", key)
 	}
 
-	return stringValue, nil
+	if strings.TrimSpace(stringValue) != stringValue {
+		return nil, fmt.Errorf("config '%s=%s' contain spaces", key, stringValue)
+	}
+
+	u, err := url.Parse(stringValue)
+	if err != nil {
+		return nil, fmt.Errorf("config '%s=%s' malformed URL: %w", key, stringValue, err)
+	}
+
+	if u.Scheme != "https" {
+		return nil, fmt.Errorf("config '%s=%s' must use scheme 'https'", key, stringValue)
+	}
+
+	if u.Hostname() == "" {
+		return nil, fmt.Errorf("config '%s=%s' must have a hostname", key, stringValue)
+	}
+
+	if u.Query().Get("dns") != "" {
+		return nil, fmt.Errorf("config '%s=%s' cannot contain query parameter 'dns'", key, stringValue)
+	}
+
+	if !(u.Port() == "443" || u.Port() == "") {
+		return nil, fmt.Errorf("config '%s=%s' port must be 443 or unspecified", key, stringValue)
+	}
+
+	return u, nil
 }
 
-func (c *ConfigMap) GetRequiredListOfStrings(key ConfigKey) ([]string, error) {
+func (c *ConfigMap) GetRequiredDoHIPs() ([]netip.Addr, error) {
+	key := keyDohIPs
 	stringValue := c.m[key]
 	if stringValue == "" {
-		return nil, fmt.Errorf("required config '%s' missing", key)
+		return nil, fmt.Errorf("config %s= missing", key)
 	}
 
 	result := strings.Split(stringValue, ",")
 	if len(result) == 0 {
-		return nil, fmt.Errorf("invalid required config '%s' missing", key)
+		return nil, fmt.Errorf("config %s= missing", key)
 	}
 
-	return result, nil
+	dohIPs := make([]netip.Addr, 0)
+	for _, ip := range result {
+		parsedIP, err := netip.ParseAddr(ip)
+		if err != nil {
+			return nil, fmt.Errorf("config %s= invalid IP '%s'", key, ip)
+		}
+
+		dohIPs = append(dohIPs, parsedIP)
+	}
+
+	return dohIPs, nil
 }
 
 func parseConfig(scanner *bufio.Scanner) (*Config, error) {
@@ -193,9 +231,10 @@ func parseConfig(scanner *bufio.Scanner) (*Config, error) {
 		line := scanner.Text()
 
 		if len(line) > 0 && !strings.HasPrefix(line, "#") {
-			parts := strings.Split(line, "=")
+			parts := strings.SplitN(line, "=", 2)
+
 			if len(parts) != 2 {
-				return nil, fmt.Errorf("more than one = in config line: %s", line)
+				return nil, fmt.Errorf("config malformed line: '%s'", line)
 			}
 
 			key := ConfigKey(parts[0])
@@ -203,11 +242,15 @@ func parseConfig(scanner *bufio.Scanner) (*Config, error) {
 
 			s, found := configMap.Get(key)
 			if !found {
-				return nil, fmt.Errorf("unknown key '%s': %s", key, line)
+				return nil, fmt.Errorf("config unknown key '%s': '%s'", key, line)
 			}
 
 			if s != "" {
-				return nil, fmt.Errorf("duplicate key '%s'", line)
+				return nil, fmt.Errorf("config duplicate key '%s'", line)
+			}
+
+			if value == "" {
+				return nil, fmt.Errorf("config %s= is empty", key)
 			}
 
 			configMap.Set(key, value)
@@ -219,23 +262,14 @@ func parseConfig(scanner *bufio.Scanner) (*Config, error) {
 		return nil, err
 	}
 
-	dohURL, err := configMap.GetRequiredString(keyDohURL)
+	dohURL, err := configMap.GetRequiredDoHURL()
 	if err != nil {
 		return nil, err
 	}
 
-	dohIPsRaw, err := configMap.GetRequiredListOfStrings(keyDohIPs)
+	dohIPs, err := configMap.GetRequiredDoHIPs()
 	if err != nil {
 		return nil, err
-	}
-	dohIPs := make([]netip.Addr, 0)
-	for _, ip := range dohIPsRaw {
-		parsedIP, err := netip.ParseAddr(ip)
-		if err != nil {
-			return nil, err
-		}
-
-		dohIPs = append(dohIPs, parsedIP)
 	}
 
 	minTTL, err := configMap.GetUint32(keyMinTTL, defaultMinTTL)
