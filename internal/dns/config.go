@@ -182,6 +182,10 @@ func (c *ConfigMap) GetRequiredDoHURL() (*url.URL, error) {
 		return nil, fmt.Errorf("config '%s=%s' cannot contain query parameter 'dns'", key, stringValue)
 	}
 
+	if !(u.Port() == "443" || u.Port() == "") {
+		return nil, fmt.Errorf("config '%s=%s' port must be 443 or unspecified", key, stringValue)
+	}
+
 	return u, nil
 }
 
