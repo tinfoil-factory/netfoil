@@ -74,7 +74,7 @@ func UnmarshalRequest(data []byte) (*Request, error) {
 		return nil, fmt.Errorf("unexpected non-zero RCODE %d", flags.RCODE)
 	}
 
-	name, err := readDomain(data, buffer)
+	name, err := readDomain(data, buffer, false)
 	if err != nil {
 		return nil, err
 	}

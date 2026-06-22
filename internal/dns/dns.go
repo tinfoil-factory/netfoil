@@ -295,11 +295,12 @@ func writeDomain(buffer *bytes.Buffer, domain string) error {
 	return nil
 }
 
-func readDomain(data []byte, buffer *bytes.Buffer) (string, error) {
+func readDomain(data []byte, buffer *bytes.Buffer, exitEarlyOnError bool) (string, error) {
 	currentBuffer := buffer
 	parts := make([]string, 0)
 	visitedOffsets := make(map[uint16]struct{})
 
+	containsIllegalCharacters := false
 	pointerJustVisited := false
 	totalLength := 0
 	for {
@@ -360,7 +361,11 @@ func readDomain(data []byte, buffer *bytes.Buffer) (string, error) {
 
 		label := string(section)
 		if !labelRegex.MatchString(label) {
-			return "", fmt.Errorf("illegal characters in label")
+			containsIllegalCharacters = true
+
+			if exitEarlyOnError {
+				return "", fmt.Errorf("illegal characters in label")
+			}
 		}
 
 		parts = append(parts, label)
@@ -374,6 +379,10 @@ func readDomain(data []byte, buffer *bytes.Buffer) (string, error) {
 	name := "."
 	if len(parts) > 1 {
 		name = strings.Join(parts, ".")
+	}
+
+	if containsIllegalCharacters {
+		return "", FormatError{Domain: name}
 	}
 
 	return name, nil
@@ -544,7 +553,7 @@ func readClass(buffer *bytes.Buffer) (ClassType, error) {
 }
 
 func readEDNS(data []byte, buffer *bytes.Buffer) (uint16, error) {
-	name, err := readDomain(data, buffer)
+	name, err := readDomain(data, buffer, true)
 	if err != nil {
 		return 0, err
 	}
