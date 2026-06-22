@@ -336,6 +336,11 @@ func readIPv4(data []byte) ([]net.IP, error) {
 
 	r := make([]net.IP, 0)
 	for i := 0; i < count; i++ {
+		// TODO consider alternatives to just dropping
+		if i == maxNumberOfIPv4Hints {
+			break
+		}
+
 		index := 4 * i
 		ip := net.IPv4(data[index+0], data[index+1], data[index+2], data[index+3])
 
@@ -354,6 +359,11 @@ func readIPv6(data []byte) ([]net.IP, error) {
 
 	r := make([]net.IP, 0)
 	for i := 0; i < count; i++ {
+		// TODO consider alternatives to just dropping
+		if i == maxNumberOfIPv6Hints {
+			break
+		}
+
 		index := 16 * i
 		var ip net.IP = data[index : index+16]
 

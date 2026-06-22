@@ -69,6 +69,11 @@ func UnmarshalECHConfig(data []byte) ([]ECHConfig, error) {
 		}
 		result = append(result, *echConfig)
 
+		// TODO consider alternatives to dropping the rest
+		if len(result) == maxNumberOfECH {
+			break
+		}
+
 		if buffer.Len() == 0 {
 			break
 		}

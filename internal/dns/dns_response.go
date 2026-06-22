@@ -12,6 +12,9 @@ const (
 	maxNumberOfIPv4Records  = 10
 	maxNumberOfIPv6Records  = 10
 	maxNumberOfHTTPSRecords = 10
+	maxNumberOfIPv4Hints    = 10
+	maxNumberOfIPv6Hints    = 10
+	maxNumberOfECH          = 10
 	headerLength            = 12
 	tcpMaxPayloadSize       = 65535
 )
