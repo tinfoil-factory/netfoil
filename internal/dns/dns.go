@@ -584,6 +584,11 @@ func readEDNS(data []byte, buffer *bytes.Buffer) (uint16, error) {
 		return 0, err
 	}
 
+	version := (extendedRCODEAndFlags >> 8) & 0xFF
+	if version != 0 {
+		return 0, fmt.Errorf("EDNS version must be 0")
+	}
+
 	// According to RFC 6891 section 6.1.2 any option codes not understood must be ignored.
 	// None are currently implemented.
 	_, err = readArray16(buffer)
