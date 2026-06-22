@@ -12,6 +12,9 @@ const (
 	maxNumberOfIPv4Records  = 10
 	maxNumberOfIPv6Records  = 10
 	maxNumberOfHTTPSRecords = 10
+	maxNumberOfIPv4Hints    = 10
+	maxNumberOfIPv6Hints    = 10
+	maxNumberOfECH          = 10
 	headerLength            = 12
 	tcpMaxPayloadSize       = 65535
 )
@@ -247,7 +250,7 @@ func UnmarshalResponse(data []byte) (*Response, error) {
 	// https://datatracker.ietf.org/doc/html/rfc1035#section-4.1.2
 	questions := make([]Question, 0)
 	for i := 0; i < int(header.NumberOfQuestions); i++ {
-		name, err := readDomain(data, p)
+		name, err := readDomain(data, p, true)
 		if err != nil {
 			return nil, err
 		}
@@ -278,7 +281,7 @@ func UnmarshalResponse(data []byte) (*Response, error) {
 	IPv6Count := 0
 	HTTPSCount := 0
 	for i := 0; i < int(header.NumberOfAnswers); i++ {
-		name, err := readDomain(data, p)
+		name, err := readDomain(data, p, true)
 		if err != nil {
 			return nil, err
 		}
@@ -351,7 +354,7 @@ func UnmarshalResponse(data []byte) (*Response, error) {
 			}
 		case RecordTypeCNAME:
 			pb := bytes.NewBuffer(rawData)
-			domain, err := readDomain(data, pb)
+			domain, err := readDomain(data, pb, true)
 			if err != nil {
 				return nil, err
 			}

@@ -116,7 +116,7 @@ func Server(conn *net.UDPConn, tcpListener *net.TCPListener, config *Config, pol
 	go func() {
 		for result := range resultsChannel {
 			if result.err != nil {
-				fmt.Printf("error: worker failed to process: %s\n", result.err.Error())
+				fmt.Printf("error: %s\n", result.err.Error())
 			} else {
 				logResult(config, result)
 			}

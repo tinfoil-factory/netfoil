@@ -115,7 +115,7 @@ func TestName(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		domain, err := readDomain(buffer.Bytes(), buffer)
+		domain, err := readDomain(buffer.Bytes(), buffer, true)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -142,7 +142,7 @@ func TestTooLongName(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = readDomain(buffer.Bytes(), buffer)
+	_, err = readDomain(buffer.Bytes(), buffer, true)
 	if err == nil {
 		t.Fatal("expected error, got none")
 	}
@@ -169,7 +169,7 @@ func TestAlmostTooLongName(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = readDomain(buffer.Bytes(), buffer)
+	_, err = readDomain(buffer.Bytes(), buffer, true)
 	if err != nil {
 		t.Fatal(err)
 	}

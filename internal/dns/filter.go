@@ -25,6 +25,7 @@ const (
 )
 
 var labelRegex = regexp.MustCompile("^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
+var standardRegex = regexp.MustCompile("^[a-zA-Z0-9-_.]$")
 
 type Policy struct {
 	exactSearchAllow     *suffixtrie.Node
