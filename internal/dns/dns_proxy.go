@@ -76,12 +76,12 @@ func (t *timedResponse) rewriteTTLs() (result *Response, stillValid bool) {
 		Answers:   slices.Clone(t.response.Answers),
 	}
 
-	for _, a := range result.Answers {
-		if a.TTL >= diffSeconds {
-			a.TTL = a.TTL - diffSeconds
+	for i := range result.Answers {
+		if result.Answers[i].TTL >= diffSeconds {
+			result.Answers[i].TTL = result.Answers[i].TTL - diffSeconds
 		} else {
 			ok = false
-			a.TTL = 0
+			result.Answers[i].TTL = 0
 		}
 	}
 
@@ -618,9 +618,9 @@ func (w *worker) process(workerTask *workerTask) (processResponse, error) {
 				// TODO responses without at TTL will not be evicted from the cache, so not caching it for now
 				// TODO decide what to do with large responses
 				if len(candidateResponse.Answers) > 0 && len(candidateResponse.Answers) < 1000 {
-					for _, answer := range candidateResponse.Answers {
-						if answer.TTL > w.config.MaxTTL {
-							answer.TTL = w.config.MaxTTL
+					for i := range candidateResponse.Answers {
+						if candidateResponse.Answers[i].TTL > w.config.MaxTTL {
+							candidateResponse.Answers[i].TTL = w.config.MaxTTL
 						}
 					}
 
