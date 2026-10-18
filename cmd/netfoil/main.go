@@ -91,7 +91,7 @@ func main() {
 	}
 
 	// Apply late for a shorter allowlist
-	err = applySystemCallFilter(options.FilterSystemCalls, caCertPool)
+	err = applySystemCallFilter(options.FilterSystemCalls)
 	if err != nil {
 		println(err.Error())
 		os.Exit(1)
@@ -105,18 +105,26 @@ func main() {
 }
 
 func loadCACertPool(path string) (*x509.CertPool, error) {
-	if path == "" {
-		return nil, nil
-	}
-
-	caCert, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("error reading CA certificate: %w", err)
-	}
-
 	caCertPool := x509.NewCertPool()
-	if !caCertPool.AppendCertsFromPEM(caCert) {
-		return nil, fmt.Errorf("error parsing CA certificate")
+	if path == "" {
+		caCert, err := os.ReadFile("/etc/ssl/certs/ca-certificates.crt")
+		if err != nil {
+			return nil, fmt.Errorf("error reading CA certificate: %w", err)
+		}
+
+		if !caCertPool.AppendCertsFromPEM(caCert) {
+			return nil, fmt.Errorf("error parsing CA certificate")
+		}
+
+	} else {
+		caCert, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("error reading CA certificate: %w", err)
+		}
+
+		if !caCertPool.AppendCertsFromPEM(caCert) {
+			return nil, fmt.Errorf("error parsing CA certificate")
+		}
 	}
 
 	return caCertPool, nil
@@ -145,7 +153,7 @@ func disableSpeculation(disable bool) error {
 	return nil
 }
 
-func applySystemCallFilter(filter bool, caCertPool *x509.CertPool) error {
+func applySystemCallFilter(filter bool) error {
 	if filter {
 		// NoNewPrivs must be applied before the seccomp filter
 		_, _, errInt := syscall.AllThreadsSyscall6(syscall.SYS_PRCTL, unix.PR_SET_NO_NEW_PRIVS, uintptr(1), 0, 0, 0, 0)
@@ -155,28 +163,39 @@ func applySystemCallFilter(filter bool, caCertPool *x509.CertPool) error {
 
 		allowedSyscalls := []uint32{
 			// @default
-			//unix.SYS_ARCH_PRCTL,
 			unix.SYS_RT_SIGRETURN,
 			unix.SYS_SCHED_GETAFFINITY,
 			unix.SYS_SCHED_YIELD,
-			//unix.SYS_EXECVE,
 			unix.SYS_FUTEX,
 			unix.SYS_GETPID,
 			unix.SYS_GETRANDOM,
-			//unix.SYS_GETRLIMIT,
 			unix.SYS_GETTID,
-			unix.SYS_MMAP,
 			unix.SYS_NANOSLEEP,
 			unix.SYS_EXIT,
 			unix.SYS_EXIT_GROUP,
-			// @sandbox
-			//unix.SYS_SECCOMP,
+			// Needed when vDSO is disabled,
+			unix.SYS_CLOCK_GETTIME,
 
 			// @basic-io
 			unix.SYS_CLOSE,
 			unix.SYS_READ,
 			unix.SYS_WRITE,
 			unix.SYS_PREAD64,
+
+			// @signal
+			unix.SYS_RT_SIGPROCMASK,
+			unix.SYS_RT_SIGACTION,
+			unix.SYS_SIGALTSTACK,
+
+			// @io-event
+			unix.SYS_EPOLL_CTL,
+			unix.SYS_EPOLL_PWAIT,
+
+			// @process
+			unix.SYS_TGKILL,
+
+			// @system-service
+			unix.SYS_MADVISE,
 
 			// @network-io
 			unix.SYS_ACCEPT4,
@@ -187,53 +206,17 @@ func applySystemCallFilter(filter bool, caCertPool *x509.CertPool) error {
 			unix.SYS_RECVFROM,
 			unix.SYS_SENDTO,
 			unix.SYS_SETSOCKOPT,
-			unix.SYS_SOCKET,
-
-			// @signal
-			unix.SYS_RT_SIGRETURN,
-			unix.SYS_RT_SIGPROCMASK,
-			unix.SYS_SIGALTSTACK,
-			unix.SYS_RT_SIGACTION,
-
-			// @process
-			unix.SYS_CLONE,
-			//unix.SYS_PRCTL,
-			unix.SYS_TGKILL,
-
-			// @io-event
-			//unix.SYS_EPOLL_CREATE1,
-			unix.SYS_EPOLL_CTL,
-			unix.SYS_EPOLL_PWAIT,
-			//unix.SYS_EVENTFD2,
-
-			// @system-service
-			unix.SYS_MADVISE,
-
-			// @resources
-			//unix.SYS_SETRLIMIT,
-
-			// Needed when vDSO is disabled,
-			unix.SYS_CLOCK_GETTIME,
 		}
-
-		if caCertPool == nil {
-			additionalAllowedSyscalls := []uint32{
-				// @file-system
-				unix.SYS_FCNTL,
-				unix.SYS_FSTAT,
-				unix.SYS_GETDENTS64,
-				unix.SYS_OPENAT,
-				unix.SYS_READLINKAT,
-			}
-
-			allowedSyscalls = append(allowedSyscalls, additionalAllowedSyscalls...)
-		}
-
-		instructions := make([]bpf.Instruction, 0)
 
 		syscallOffset := uint32(0)
 		archOffset := uint32(4)
 		intSize := 4
+
+		argOffset0 := uint32(16)
+		argOffset1 := uint32(24)
+		argOffset2 := uint32(32)
+
+		instructions := make([]bpf.Instruction, 0)
 
 		instructions = append(instructions, bpf.LoadAbsolute{Off: archOffset, Size: intSize})
 		instructions = append(instructions, bpf.JumpIf{Cond: bpf.JumpEqual, Val: unix.AUDIT_ARCH_X86_64, SkipTrue: 1})
@@ -242,6 +225,58 @@ func applySystemCallFilter(filter bool, caCertPool *x509.CertPool) error {
 		instructions = append(instructions, bpf.LoadAbsolute{Off: syscallOffset, Size: intSize})
 		for _, s := range allowedSyscalls {
 			instructions = append(instructions, bpf.JumpIf{Cond: bpf.JumpNotEqual, Val: s, SkipTrue: 1})
+			instructions = append(instructions, bpf.RetConstant{Val: uint32(unix.SECCOMP_RET_ALLOW)})
+		}
+
+		// mmap
+		{
+			instructions = append(instructions, bpf.JumpIf{Cond: bpf.JumpNotEqual, Val: unix.SYS_MMAP, SkipTrue: 5})
+
+			instructions = append(instructions, bpf.LoadAbsolute{Off: argOffset2, Size: intSize})
+			instructions = append(instructions, bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: unix.PROT_EXEC})
+
+			instructions = append(instructions, bpf.JumpIf{Cond: bpf.JumpNotEqual, Val: unix.PROT_EXEC, SkipTrue: 1})
+			instructions = append(instructions, bpf.RetConstant{Val: uint32(unix.SECCOMP_RET_KILL_PROCESS)})
+
+			instructions = append(instructions, bpf.RetConstant{Val: uint32(unix.SECCOMP_RET_ALLOW)})
+		}
+
+		// clone
+		{
+			instructions = append(instructions, bpf.LoadAbsolute{Off: syscallOffset, Size: intSize})
+			instructions = append(instructions, bpf.JumpIf{Cond: bpf.JumpNotEqual, Val: unix.SYS_CLONE, SkipTrue: 4})
+
+			instructions = append(instructions, bpf.LoadAbsolute{Off: argOffset0, Size: intSize})
+
+			cloneFlags := uint32(unix.CLONE_VM | unix.CLONE_FS | unix.CLONE_FILES | unix.CLONE_SIGHAND | unix.CLONE_SYSVSEM | unix.CLONE_THREAD | unix.CLONE_SETTLS)
+			instructions = append(instructions, bpf.JumpIf{Cond: bpf.JumpEqual, Val: cloneFlags, SkipTrue: 1})
+			instructions = append(instructions, bpf.RetConstant{Val: uint32(unix.SECCOMP_RET_KILL_PROCESS)})
+			instructions = append(instructions, bpf.RetConstant{Val: uint32(unix.SECCOMP_RET_ALLOW)})
+		}
+
+		// socket
+		{
+			instructions = append(instructions, bpf.LoadAbsolute{Off: syscallOffset, Size: intSize})
+			instructions = append(instructions, bpf.JumpIf{Cond: bpf.JumpNotEqual, Val: unix.SYS_SOCKET, SkipTrue: 14})
+
+			instructions = append(instructions, bpf.LoadAbsolute{Off: argOffset0, Size: intSize})
+			instructions = append(instructions, bpf.JumpIf{Cond: bpf.JumpEqual, Val: unix.AF_INET, SkipTrue: 1})
+			instructions = append(instructions, bpf.RetConstant{Val: uint32(unix.SECCOMP_RET_KILL_PROCESS)})
+
+			instructions = append(instructions, bpf.LoadAbsolute{Off: argOffset1, Size: intSize})
+			socketMask := uint32(0xf)
+			instructions = append(instructions, bpf.ALUOpConstant{Op: bpf.ALUOpAnd, Val: socketMask})
+
+			instructions = append(instructions, bpf.JumpIf{Cond: bpf.JumpEqual, Val: unix.SOCK_DGRAM, SkipTrue: 2})
+			instructions = append(instructions, bpf.JumpIf{Cond: bpf.JumpEqual, Val: unix.SOCK_STREAM, SkipTrue: 1})
+			instructions = append(instructions, bpf.RetConstant{Val: uint32(unix.SECCOMP_RET_KILL_PROCESS)})
+
+			instructions = append(instructions, bpf.LoadAbsolute{Off: argOffset2, Size: intSize})
+			instructions = append(instructions, bpf.JumpIf{Cond: bpf.JumpEqual, Val: unix.IPPROTO_UDP, SkipTrue: 3})
+			instructions = append(instructions, bpf.JumpIf{Cond: bpf.JumpEqual, Val: unix.IPPROTO_TCP, SkipTrue: 2})
+			instructions = append(instructions, bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0, SkipTrue: 1})
+			instructions = append(instructions, bpf.RetConstant{Val: uint32(unix.SECCOMP_RET_KILL_PROCESS)})
+
 			instructions = append(instructions, bpf.RetConstant{Val: uint32(unix.SECCOMP_RET_ALLOW)})
 		}
 
