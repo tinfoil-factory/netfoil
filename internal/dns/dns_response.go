@@ -212,6 +212,10 @@ func MarshalNotImplementedResponse(request *Request) ([]byte, error) {
 }
 
 func generateBlockResponse() *Response {
+	return generateNXDomainResponse()
+}
+
+func generateNXDomainResponse() *Response {
 	var response *Response
 	flags := Flags{
 		QR:     true, // this is a response

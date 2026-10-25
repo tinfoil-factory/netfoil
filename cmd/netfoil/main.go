@@ -37,6 +37,9 @@ OPTIONS
         --filter-system-calls
             Apply seccomp filter for system calls (default: false, only supported on x86_64).
 
+        --hermetic
+            No remote requests, only serve pinned responses.
+
         --help, -h
 			Print the help message.
 
@@ -91,13 +94,13 @@ func main() {
 	}
 
 	// Apply late for a shorter allowlist
-	err = applySystemCallFilter(options.FilterSystemCalls)
+	err = applySystemCallFilter(options.FilterSystemCalls, options.Hermetic)
 	if err != nil {
 		println(err.Error())
 		os.Exit(1)
 	}
 
-	err = dns.Server(conn, tcpListener, config, policy, caCertPool)
+	err = dns.Server(conn, tcpListener, config, policy, caCertPool, options.Hermetic)
 	if err != nil {
 		println(err.Error())
 		os.Exit(1)
@@ -153,7 +156,7 @@ func disableSpeculation(disable bool) error {
 	return nil
 }
 
-func applySystemCallFilter(filter bool) error {
+func applySystemCallFilter(filter bool, hermetic bool) error {
 	if filter {
 		// NoNewPrivs must be applied before the seccomp filter
 		_, _, errInt := syscall.AllThreadsSyscall6(syscall.SYS_PRCTL, unix.PR_SET_NO_NEW_PRIVS, uintptr(1), 0, 0, 0, 0)
@@ -199,13 +202,16 @@ func applySystemCallFilter(filter bool) error {
 
 			// @network-io
 			unix.SYS_ACCEPT4,
-			unix.SYS_CONNECT,
 			unix.SYS_GETPEERNAME,
 			unix.SYS_GETSOCKNAME,
 			unix.SYS_GETSOCKOPT,
 			unix.SYS_RECVFROM,
 			unix.SYS_SENDTO,
 			unix.SYS_SETSOCKOPT,
+		}
+
+		if !hermetic {
+			allowedSyscalls = append(allowedSyscalls, unix.SYS_CONNECT)
 		}
 
 		syscallOffset := uint32(0)
@@ -255,7 +261,7 @@ func applySystemCallFilter(filter bool) error {
 		}
 
 		// socket
-		{
+		if !hermetic {
 			instructions = append(instructions, bpf.LoadAbsolute{Off: syscallOffset, Size: intSize})
 			instructions = append(instructions, bpf.JumpIf{Cond: bpf.JumpNotEqual, Val: unix.SYS_SOCKET, SkipTrue: 14})
 
@@ -359,11 +365,12 @@ type Options struct {
 	DisableSpeculation bool
 	PinCA              string
 	FilterSystemCalls  bool
+	Hermetic           bool
 }
 
 func processInput() (*Options, error) {
 	flags := flag.NewFlagSet("all", flag.ExitOnError)
-	var help, h, disableSpeculation, filterSystemCalls bool
+	var help, h, disableSpeculation, filterSystemCalls, hermetic bool
 	var configPath, ipString, pinCA string
 	var portInt int
 	flags.BoolVar(&help, "help", false, "")
@@ -374,6 +381,7 @@ func processInput() (*Options, error) {
 	flags.StringVar(&ipString, "ip", "127.0.0.1", "")
 	flags.StringVar(&configPath, "config-directory", "/etc/netfoil", "")
 	flags.StringVar(&pinCA, "pin-certificate-authority", "", "")
+	flags.BoolVar(&hermetic, "hermetic", false, "")
 
 	err := flags.Parse(os.Args[1:])
 	if err != nil || help || h {
@@ -399,6 +407,7 @@ func processInput() (*Options, error) {
 		DisableSpeculation: disableSpeculation,
 		PinCA:              pinCA,
 		FilterSystemCalls:  filterSystemCalls,
+		Hermetic:           hermetic,
 	}, nil
 }
 
