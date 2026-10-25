@@ -62,6 +62,13 @@ Log each denied request on a single line: `<allow/deny>|<domain>|<record type>`.
  - *Default*: `true`
  - *Example*: `LogDenied=false`
 
+### LogSourceIP=
+Add source IP to LogAllowed/LogDenied entries: `<allow/deny>|<domain>|<record type>|<source IP>`.
+
+- *Required*: no
+- *Default*: `false`
+- *Example*: `LogSourceIP=true`
+
 ### LogLevel=
 Set log level.
 

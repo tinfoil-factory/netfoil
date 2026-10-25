@@ -9,8 +9,8 @@ import (
 
 const (
 	maxNumberOfCnameRecords = 10
-	maxNumberOfIPv4Records  = 10
-	maxNumberOfIPv6Records  = 10
+	maxNumberOfIPv4Records  = 15
+	maxNumberOfIPv6Records  = 15
 	maxNumberOfHTTPSRecords = 10
 	maxNumberOfIPv4Hints    = 10
 	maxNumberOfIPv6Hints    = 10
@@ -212,6 +212,10 @@ func MarshalNotImplementedResponse(request *Request) ([]byte, error) {
 }
 
 func generateBlockResponse() *Response {
+	return generateNXDomainResponse()
+}
+
+func generateNXDomainResponse() *Response {
 	var response *Response
 	flags := Flags{
 		QR:     true, // this is a response

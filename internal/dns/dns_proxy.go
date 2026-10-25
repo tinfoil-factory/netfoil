@@ -33,7 +33,8 @@ type workerTask struct {
 }
 
 type workerResult struct {
-	remote             *net.UDPAddr
+	udpRemote          *net.UDPAddr
+	remote             string
 	question           *Question
 	response           *Response
 	marshalledResponse []byte
@@ -55,6 +56,7 @@ type worker struct {
 	resultsChannel chan<- workerResult
 	policy         *Policy
 	tcpConnQueue   <-chan *net.TCPConn
+	hermetic       bool
 }
 
 type timedResponse struct {
@@ -88,7 +90,7 @@ func (t *timedResponse) rewriteTTLs() (result *Response, stillValid bool) {
 	return result, ok
 }
 
-func Server(conn *net.UDPConn, tcpListener *net.TCPListener, config *Config, policy *Policy, caCertPool *x509.CertPool) error {
+func Server(conn *net.UDPConn, tcpListener *net.TCPListener, config *Config, policy *Policy, caCertPool *x509.CertPool, hermetic bool) error {
 	dohClient, err := NewDoHClient(config.DoHURL, config.DoHIPs, caCertPool)
 	if err != nil {
 		return err
@@ -109,6 +111,7 @@ func Server(conn *net.UDPConn, tcpListener *net.TCPListener, config *Config, pol
 			taskQueue:      tasksChannel,
 			resultsChannel: resultsChannel,
 			policy:         policy,
+			hermetic:       hermetic,
 		}
 		worker.start()
 	}
@@ -122,7 +125,7 @@ func Server(conn *net.UDPConn, tcpListener *net.TCPListener, config *Config, pol
 			}
 
 			if result.marshalledResponse != nil {
-				_, err = conn.WriteToUDP(result.marshalledResponse, result.remote)
+				_, err = conn.WriteToUDP(result.marshalledResponse, result.udpRemote)
 				if err != nil {
 					fmt.Printf("error: failed to write UDP response: %s\n", err.Error())
 				}
@@ -290,7 +293,7 @@ func (w *worker) handleTCPConnection(conn *net.TCPConn) {
 		elapsed := time.Since(start)
 
 		w.resultsChannel <- workerResult{
-			remote:          nil,
+			udpRemote:       nil,
 			question:        result.question,
 			response:        result.response,
 			allowed:         result.allowed,
@@ -379,12 +382,18 @@ func (w *worker) handleTCPConnection(conn *net.TCPConn) {
 
 func logResult(config *Config, result workerResult) {
 	nameWithoutTrailingDot := strings.TrimSuffix(result.question.Name, ".")
+	sourceIP := ""
+	if config.LogSourceIP {
+		parts := strings.Split(result.remote, ":")
+		sourceIP = fmt.Sprintf("|%s", parts[0])
+	}
+
 	if result.allowed && config.LogAllowed {
-		fmt.Printf("allow|%s|%s\n", nameWithoutTrailingDot, result.question.Type.Name())
+		fmt.Printf("allow|%s|%s%s\n", nameWithoutTrailingDot, result.question.Type.Name(), sourceIP)
 	}
 
 	if !result.allowed && config.LogDenied {
-		fmt.Printf("deny|%s|%s\n", nameWithoutTrailingDot, result.question.Type.Name())
+		fmt.Printf("deny|%s|%s%s\n", nameWithoutTrailingDot, result.question.Type.Name(), sourceIP)
 	}
 
 	if config.LogLevel == slog.LevelDebug {
@@ -481,7 +490,8 @@ func (w *worker) start() {
 			elapsed := time.Since(start)
 
 			w.resultsChannel <- workerResult{
-				remote:             task.udpRemote,
+				udpRemote:          task.udpRemote,
+				remote:             task.remote,
 				question:           result.question,
 				response:           result.response,
 				marshalledResponse: result.marshalledResponse,
@@ -585,6 +595,11 @@ func (w *worker) process(workerTask *workerTask) (processResponse, error) {
 					candidateResponse = generateAResponse(question, ip)
 					result.pinned = true
 				}
+			}
+
+			if !found && w.hermetic {
+				candidateResponse = generateNXDomainResponse()
+				found = true
 			}
 
 			if !found {

@@ -14,4 +14,5 @@ DoHIPs=1.1.1.2,1.0.0.2
 # PinResponseDomain=false
 # LogAllowed=true
 # LogDenied=true
+# LogSourceIP=false
 # LogLevel=info
