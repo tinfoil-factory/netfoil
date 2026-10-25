@@ -33,7 +33,8 @@ type workerTask struct {
 }
 
 type workerResult struct {
-	remote             *net.UDPAddr
+	udpRemote          *net.UDPAddr
+	remote             string
 	question           *Question
 	response           *Response
 	marshalledResponse []byte
@@ -124,7 +125,7 @@ func Server(conn *net.UDPConn, tcpListener *net.TCPListener, config *Config, pol
 			}
 
 			if result.marshalledResponse != nil {
-				_, err = conn.WriteToUDP(result.marshalledResponse, result.remote)
+				_, err = conn.WriteToUDP(result.marshalledResponse, result.udpRemote)
 				if err != nil {
 					fmt.Printf("error: failed to write UDP response: %s\n", err.Error())
 				}
@@ -292,7 +293,7 @@ func (w *worker) handleTCPConnection(conn *net.TCPConn) {
 		elapsed := time.Since(start)
 
 		w.resultsChannel <- workerResult{
-			remote:          nil,
+			udpRemote:       nil,
 			question:        result.question,
 			response:        result.response,
 			allowed:         result.allowed,
@@ -381,12 +382,18 @@ func (w *worker) handleTCPConnection(conn *net.TCPConn) {
 
 func logResult(config *Config, result workerResult) {
 	nameWithoutTrailingDot := strings.TrimSuffix(result.question.Name, ".")
+	sourceIP := ""
+	if config.LogSourceIP {
+		parts := strings.Split(result.remote, ":")
+		sourceIP = fmt.Sprintf("|%s", parts[0])
+	}
+
 	if result.allowed && config.LogAllowed {
-		fmt.Printf("allow|%s|%s\n", nameWithoutTrailingDot, result.question.Type.Name())
+		fmt.Printf("allow|%s|%s%s\n", nameWithoutTrailingDot, result.question.Type.Name(), sourceIP)
 	}
 
 	if !result.allowed && config.LogDenied {
-		fmt.Printf("deny|%s|%s\n", nameWithoutTrailingDot, result.question.Type.Name())
+		fmt.Printf("deny|%s|%s%s\n", nameWithoutTrailingDot, result.question.Type.Name(), sourceIP)
 	}
 
 	if config.LogLevel == slog.LevelDebug {
@@ -483,7 +490,8 @@ func (w *worker) start() {
 			elapsed := time.Since(start)
 
 			w.resultsChannel <- workerResult{
-				remote:             task.udpRemote,
+				udpRemote:          task.udpRemote,
+				remote:             task.remote,
 				question:           result.question,
 				response:           result.response,
 				marshalledResponse: result.marshalledResponse,

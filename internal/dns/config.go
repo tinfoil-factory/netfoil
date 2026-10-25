@@ -42,6 +42,7 @@ type Config struct {
 	PinResponseDomain bool
 	LogAllowed        bool
 	LogDenied         bool
+	LogSourceIP       bool
 	LogLevel          slog.Level
 }
 
@@ -80,6 +81,7 @@ const (
 	keyPinResponseDomain ConfigKey = "PinResponseDomain"
 	keyLogAllowed        ConfigKey = "LogAllowed"
 	keyLogDenied         ConfigKey = "LogDenied"
+	keyLogSourceIP       ConfigKey = "LogSourceIP"
 	keyLogLevel          ConfigKey = "LogLevel"
 )
 
@@ -224,6 +226,7 @@ func parseConfig(scanner *bufio.Scanner) (*Config, error) {
 		keyPinResponseDomain,
 		keyLogAllowed,
 		keyLogDenied,
+		keyLogSourceIP,
 		keyLogLevel,
 	)
 
@@ -307,6 +310,11 @@ func parseConfig(scanner *bufio.Scanner) (*Config, error) {
 		return nil, err
 	}
 
+	logSourceIP, err := configMap.GetBool(keyLogSourceIP, false)
+	if err != nil {
+		return nil, err
+	}
+
 	logLevel, err := configMap.GetLogLevel(keyLogLevel, slog.LevelInfo)
 	if err != nil {
 		return nil, err
@@ -322,6 +330,7 @@ func parseConfig(scanner *bufio.Scanner) (*Config, error) {
 		PinResponseDomain: pinResponseDomains,
 		LogAllowed:        logAllowed,
 		LogDenied:         logDenied,
+		LogSourceIP:       logSourceIP,
 		LogLevel:          logLevel,
 	}, nil
 }
