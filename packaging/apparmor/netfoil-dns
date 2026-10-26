@@ -9,7 +9,7 @@ include <tunables/global>
   network inet6 tcp,
   network inet udp,
  
-  /etc/netfoil/* r,
+  /etc/netfoil/dns/** r,
   /etc/ssl/certs/ r,
   /etc/ssl/certs/* r,
   /usr/share/ca-certificates/mozilla/* r,
