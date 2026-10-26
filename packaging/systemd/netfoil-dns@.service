@@ -20,7 +20,7 @@ Environment="GOMEMLIMIT=95MiB"
 ExecStart=/usr/sbin/netfoil-dns --config-directory /etc/netfoil/dns/%i --filter-system-calls
 
 BindReadOnlyPaths=/usr/sbin/netfoil-dns
-BindReadOnlyPaths=/etc/netfoil-dns
+BindReadOnlyPaths=/etc/netfoil/dns
 BindReadOnlyPaths=/etc/ssl
 BindReadOnlyPaths=/lib64/ld-linux-x86-64.so.2
 # Ubuntu

@@ -2,7 +2,7 @@
 abi <abi/4.0>,
 include <tunables/global>
 
-/usr/sbin/netfoil flags=(enforce) {
+/usr/sbin/netfoil-dns flags=(enforce) {
   # /etc/apparmor.d/abstractions/base
   include <abstractions/base>
   network inet tcp,
