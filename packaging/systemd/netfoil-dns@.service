@@ -5,7 +5,7 @@
 [Unit]
 Description=DNS proxy
 After=network.target
-Requires=netfoil.socket
+Requires=netfoil-dns-%i.socket
 
 [Service]
 Type=simple
@@ -17,10 +17,10 @@ DynamicUser=true
 # Cloudflare DNS on Fedora --pin-certificate-authority /etc/pki/ca-trust/extracted/pem/directory-hash/SSL.com_TLS_ECC_Root_CA_2022.pem
 # Cloudflare DNS on Ubuntu --pin-certificate-authority /etc/ssl/certs/SSL.com_TLS_ECC_Root_CA_2022.pem
 Environment="GOMEMLIMIT=95MiB"
-ExecStart=/usr/sbin/netfoil --config-directory /etc/netfoil --filter-system-calls
+ExecStart=/usr/sbin/netfoil-dns --config-directory /etc/netfoil/dns/%i --filter-system-calls
 
-BindReadOnlyPaths=/usr/sbin/netfoil
-BindReadOnlyPaths=/etc/netfoil
+BindReadOnlyPaths=/usr/sbin/netfoil-dns
+BindReadOnlyPaths=/etc/netfoil-dns
 BindReadOnlyPaths=/etc/ssl
 BindReadOnlyPaths=/lib64/ld-linux-x86-64.so.2
 # Ubuntu
@@ -29,7 +29,7 @@ BindReadOnlyPaths=-/usr/share/ca-certificates/mozilla/
 BindReadOnlyPaths=-/etc/pki/ca-trust/
 
 # This is used to set firewall rules external to netfoil
-Slice=netfoil.slice
+Slice=netfoil-dns-%i.slice
 
 AmbientCapabilities=
 CapabilityBoundingSet=
