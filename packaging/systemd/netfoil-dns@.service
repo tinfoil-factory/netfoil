@@ -67,10 +67,10 @@ SystemCallFilter=madvise
 SystemCallFilter=setrlimit
 
 # Create /run/netfoil
-RuntimeDirectory=netfoil
+RuntimeDirectory=netfoil-dns-%i
 RuntimeDirectoryMode=0700
 
-RootDirectory=/run/netfoil
+RootDirectory=/run/netfoil-dns-%i
 
 # Alternative to custom mounts
 #ReadOnlyPaths=/
