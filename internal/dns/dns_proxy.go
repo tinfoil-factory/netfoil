@@ -56,7 +56,6 @@ type worker struct {
 	resultsChannel chan<- workerResult
 	policy         *Policy
 	tcpConnQueue   <-chan *net.TCPConn
-	hermetic       bool
 }
 
 type timedResponse struct {
@@ -90,7 +89,7 @@ func (t *timedResponse) rewriteTTLs() (result *Response, stillValid bool) {
 	return result, ok
 }
 
-func Server(conn *net.UDPConn, tcpListener *net.TCPListener, config *Config, policy *Policy, caCertPool *x509.CertPool, hermetic bool) error {
+func Server(conn *net.UDPConn, tcpListener *net.TCPListener, config *Config, policy *Policy, caCertPool *x509.CertPool) error {
 	dohClient, err := NewDoHClient(config.DoHURL, config.DoHIPs, caCertPool)
 	if err != nil {
 		return err
@@ -111,7 +110,6 @@ func Server(conn *net.UDPConn, tcpListener *net.TCPListener, config *Config, pol
 			taskQueue:      tasksChannel,
 			resultsChannel: resultsChannel,
 			policy:         policy,
-			hermetic:       hermetic,
 		}
 		worker.start()
 	}
@@ -597,7 +595,7 @@ func (w *worker) process(workerTask *workerTask) (processResponse, error) {
 				}
 			}
 
-			if !found && w.hermetic {
+			if !found && w.config.Hermetic {
 				candidateResponse = generateNXDomainResponse()
 				found = true
 			}

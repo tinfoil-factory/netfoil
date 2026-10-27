@@ -39,6 +39,7 @@ type Config struct {
 	MaxTTL            uint32
 	DenyPunycode      bool
 	RemoveECH         bool
+	Hermetic          bool
 	PinResponseDomain bool
 	LogAllowed        bool
 	LogDenied         bool
@@ -78,6 +79,7 @@ const (
 	keyMaxTTL            ConfigKey = "MaxTTL"
 	keyDenyPunycode      ConfigKey = "DenyPunycode"
 	keyRemoveECH         ConfigKey = "RemoveECH"
+	keyHermetic          ConfigKey = "Hermetic"
 	keyPinResponseDomain ConfigKey = "PinResponseDomain"
 	keyLogAllowed        ConfigKey = "LogAllowed"
 	keyLogDenied         ConfigKey = "LogDenied"
@@ -223,6 +225,7 @@ func parseConfig(scanner *bufio.Scanner) (*Config, error) {
 		keyMaxTTL,
 		keyDenyPunycode,
 		keyRemoveECH,
+		keyHermetic,
 		keyPinResponseDomain,
 		keyLogAllowed,
 		keyLogDenied,
@@ -295,6 +298,11 @@ func parseConfig(scanner *bufio.Scanner) (*Config, error) {
 		return nil, err
 	}
 
+	hermetic, err := configMap.GetBool(keyHermetic, false)
+	if err != nil {
+		return nil, err
+	}
+
 	pinResponseDomains, err := configMap.GetBool(keyPinResponseDomain, false)
 	if err != nil {
 		return nil, err
@@ -327,6 +335,7 @@ func parseConfig(scanner *bufio.Scanner) (*Config, error) {
 		MaxTTL:            maxTTL,
 		DenyPunycode:      denyPunycode,
 		RemoveECH:         removeECH,
+		Hermetic:          hermetic,
 		PinResponseDomain: pinResponseDomains,
 		LogAllowed:        logAllowed,
 		LogDenied:         logDenied,
