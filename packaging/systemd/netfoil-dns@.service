@@ -29,7 +29,7 @@ BindReadOnlyPaths=-/usr/share/ca-certificates/mozilla/
 BindReadOnlyPaths=-/etc/pki/ca-trust/
 
 # This is used to set firewall rules external to netfoil
-Slice=netfoil-dns-%i.slice
+Slice=netfoil_%i-dns.slice
 
 AmbientCapabilities=
 CapabilityBoundingSet=
