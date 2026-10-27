@@ -22,7 +22,7 @@ cp "packaging/systemd/netfoil-dns@.service" "/usr/lib/systemd/system/netfoil-dns
 cp "packaging/systemd/netfoil-dns-$instance.socket" "/usr/lib/systemd/system/netfoil-dns-$instance.socket"
 cp "packaging/systemd/netfoil_$instance-dns.slice" "/usr/lib/systemd/system/netfoil_$instance-dns.slice"
 
-cp netfoil-dns /usr/sbin/netfoil-dns
+cp -f netfoil-dns /usr/sbin/netfoil-dns
 systemctl daemon-reload
 systemctl start "netfoil-dns-$instance.socket"
 systemctl start "netfoil-dns@$instance.service"
