@@ -16,6 +16,10 @@ include <tunables/global>
 
   deny /** x,
 
+  @{PROC}/@{pid}/cgroup r,
+  @{PROC}/@{pid}/mountinfo r,
+  /sys/fs/cgroup/netfoil_*.slice/netfoil_*-dns.slice/netfoil-dns@*.service/cpu.max r,
+
   # remove some of the defaults
   # TODO /proc, /sys, /etc
   deny ptrace,
