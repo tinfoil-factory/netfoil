@@ -106,6 +106,13 @@ Boolean. If the ECH part of HTTPS responses should be removed, i.e. omitted from
 - *Default*: `false`
 - *Example*: `RemoveECH=true`
 
+### Hermetic=
+Boolean. No remote requests, only serve pinned responses.
+
+- *Required*: no
+- *Default*: `false`
+- *Example*: `Hermetic=true`
+
 ### PinResponseDomain=
 Boolean. Whether to pin responses domain based on the config file `pin.response-domain`.
 

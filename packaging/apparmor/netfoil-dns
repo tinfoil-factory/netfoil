@@ -2,19 +2,23 @@
 abi <abi/4.0>,
 include <tunables/global>
 
-/usr/sbin/netfoil flags=(enforce) {
+/usr/sbin/netfoil-dns flags=(enforce) {
   # /etc/apparmor.d/abstractions/base
   include <abstractions/base>
   network inet tcp,
   network inet6 tcp,
   network inet udp,
  
-  /etc/netfoil/* r,
+  /etc/netfoil/dns/** r,
   /etc/ssl/certs/ r,
   /etc/ssl/certs/* r,
   /usr/share/ca-certificates/mozilla/* r,
 
   deny /** x,
+
+  @{PROC}/@{pid}/cgroup r,
+  @{PROC}/@{pid}/mountinfo r,
+  /sys/fs/cgroup/netfoil_*.slice/netfoil_*-dns.slice/netfoil-dns@*.service/cpu.max r,
 
   # remove some of the defaults
   # TODO /proc, /sys, /etc

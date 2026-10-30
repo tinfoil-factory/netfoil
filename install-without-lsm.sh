@@ -1,18 +1,26 @@
 #!/bin/bash
 
-systemctl stop netfoil.socket --quiet
-systemctl stop netfoil --quiet
+instance="$1"
+if [[ -z "$instance" ]]; then
+	echo "systemd instance must be specified, e.g. 'default'"
+	exit 1
+fi
+
+echo "instance $instance"
+
+systemctl stop "netfoil-dns-$instance.socket" --quiet
+systemctl stop "netfoil-dns@$instance.service" --quiet
 
 set -e
 
 sleep .2
-cp packaging/systemd/netfoil.socket /usr/lib/systemd/system/netfoil.socket
-cp packaging/systemd/netfoil.service /usr/lib/systemd/system/netfoil.service
-cp packaging/systemd/netfoil.slice /usr/lib/systemd/system/netfoil.slice
+cp "packaging/systemd/netfoil-dns@.service" "/usr/lib/systemd/system/netfoil-dns@.service"
+cp "packaging/systemd/netfoil-dns-$instance.socket" "/usr/lib/systemd/system/netfoil-dns-$instance.socket"
+cp "packaging/systemd/netfoil_$instance-dns.slice" "/usr/lib/systemd/system/netfoil_$instance-dns.slice"
 
-cp netfoil /usr/sbin/netfoil
+cp -f netfoil-dns /usr/sbin/netfoil-dns
 systemctl daemon-reload
-systemctl start netfoil.socket
-systemctl start netfoil.service
+systemctl start "netfoil-dns-$instance.socket"
+systemctl start "netfoil-dns@$instance.service"
 
-systemctl enable netfoil.service
+systemctl enable "netfoil-dns@$instance.service"
