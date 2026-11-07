@@ -205,6 +205,8 @@ func applySystemCallFilter(filter bool, hermetic bool) error {
 			unix.SYS_RECVFROM,
 			unix.SYS_SENDTO,
 			unix.SYS_SETSOCKOPT,
+
+			unix.SYS_NEWFSTATAT,
 		}
 
 		if !hermetic {
