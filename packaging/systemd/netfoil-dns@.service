@@ -46,7 +46,7 @@ SystemCallArchitectures=native
 SystemCallFilter=close read write pread64
 
 # @file-system (5/88)
-SystemCallFilter=access fcntl fstat getdents64 openat readlinkat
+SystemCallFilter=access fcntl fstat getdents64 openat readlinkat newfstatat
 
 # @network-io (9/22)
 SystemCallFilter=accept4 connect getpeername getsockname getsockopt recvfrom sendto setsockopt socket
