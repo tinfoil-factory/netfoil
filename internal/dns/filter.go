@@ -43,7 +43,7 @@ type Policy struct {
 	pinA                 map[string]net.IP
 }
 
-func NewPolicy(configDirectory string, blockPunycode bool, pinResponseDomain bool) (*Policy, error) {
+func NewPolicy(configDirectory string, blockPunycode bool, pinAIP *netip.Addr, pinResponseDomain bool) (*Policy, error) {
 	knownTLDs, err := readKnownTLDs(configDirectory, Policy{})
 	if err != nil {
 		return nil, err
@@ -133,6 +133,10 @@ func NewPolicy(configDirectory string, blockPunycode bool, pinResponseDomain boo
 	pinA, err := readAndValidatePinA(configDirectory, partialPolicy)
 	if err != nil {
 		return nil, err
+	}
+
+	if len(pinA) > 0 && pinAIP != nil {
+		return nil, fmt.Errorf("the config PinA cannot be used together with the file pin.a")
 	}
 
 	return &Policy{

@@ -40,6 +40,7 @@ type Config struct {
 	DenyPunycode      bool
 	RemoveECH         bool
 	Hermetic          bool
+	PinAIP            *netip.Addr
 	PinResponseDomain bool
 	LogAllowed        bool
 	LogDenied         bool
@@ -80,6 +81,7 @@ const (
 	keyDenyPunycode      ConfigKey = "DenyPunycode"
 	keyRemoveECH         ConfigKey = "RemoveECH"
 	keyHermetic          ConfigKey = "Hermetic"
+	keyPinAIP            ConfigKey = "PinAIP"
 	keyPinResponseDomain ConfigKey = "PinResponseDomain"
 	keyLogAllowed        ConfigKey = "LogAllowed"
 	keyLogDenied         ConfigKey = "LogDenied"
@@ -218,6 +220,21 @@ func (c *ConfigMap) GetRequiredDoHIPs() ([]netip.Addr, error) {
 	return dohIPs, nil
 }
 
+func (c *ConfigMap) GetOptionalPinAIP() (*netip.Addr, error) {
+	key := keyPinAIP
+	stringValue := c.m[key]
+	if stringValue == "" {
+		return nil, nil
+	}
+
+	parsedIP, err := netip.ParseAddr(stringValue)
+	if err != nil {
+		return nil, fmt.Errorf("config %s= invalid IP '%s'", key, stringValue)
+	}
+
+	return &parsedIP, nil
+}
+
 func parseConfig(scanner *bufio.Scanner) (*Config, error) {
 	configMap := NewConfigMap(keyDohURL,
 		keyDohIPs,
@@ -226,6 +243,7 @@ func parseConfig(scanner *bufio.Scanner) (*Config, error) {
 		keyDenyPunycode,
 		keyRemoveECH,
 		keyHermetic,
+		keyPinAIP,
 		keyPinResponseDomain,
 		keyLogAllowed,
 		keyLogDenied,
@@ -303,6 +321,11 @@ func parseConfig(scanner *bufio.Scanner) (*Config, error) {
 		return nil, err
 	}
 
+	pinAIP, err := configMap.GetOptionalPinAIP()
+	if err != nil {
+		return nil, err
+	}
+
 	pinResponseDomains, err := configMap.GetBool(keyPinResponseDomain, false)
 	if err != nil {
 		return nil, err
@@ -336,6 +359,7 @@ func parseConfig(scanner *bufio.Scanner) (*Config, error) {
 		DenyPunycode:      denyPunycode,
 		RemoveECH:         removeECH,
 		Hermetic:          hermetic,
+		PinAIP:            pinAIP,
 		PinResponseDomain: pinResponseDomains,
 		LogAllowed:        logAllowed,
 		LogDenied:         logDenied,

@@ -113,6 +113,13 @@ Boolean. No remote requests, only serve pinned responses.
 - *Default*: `false`
 - *Example*: `Hermetic=true`
 
+### PinAIP=
+Pin all A records to the given IP
+
+- *Required*: no
+- *Default*: not set
+- *Example*: `PinAIP=127.0.0.1`
+
 ### PinResponseDomain=
 Boolean. Whether to pin responses domain based on the config file `pin.response-domain`.
 

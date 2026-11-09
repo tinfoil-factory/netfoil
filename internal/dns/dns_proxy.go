@@ -585,7 +585,11 @@ func (w *worker) process(workerTask *workerTask) (processResponse, error) {
 
 			found := false
 			var candidateResponse *Response = nil
-			if len(policy.pinA) > 0 && question.Type == RecordTypeA {
+			if w.config.PinAIP != nil && question.Type == RecordTypeA {
+				candidateResponse = generateAResponse(question, w.config.PinAIP.AsSlice())
+				result.pinned = true
+				found = true
+			} else if len(policy.pinA) > 0 && question.Type == RecordTypeA {
 				var ip net.IP = nil
 				questionName := strings.TrimSuffix(question.Name, ".")
 				ip, found = policy.pinA[questionName]
