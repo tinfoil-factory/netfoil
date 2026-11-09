@@ -12,6 +12,7 @@ DoHIPs=1.1.1.2,1.0.0.2
 # DenyPunycode=false
 # RemoveECH=false
 # Hermetic=false
+# PinAIP=
 # PinResponseDomain=false
 # LogAllowed=true
 # LogDenied=true
