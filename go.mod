@@ -2,7 +2,7 @@ module github.com/tinfoil-factory/netfoil
 
 go 1.26.0
 
-toolchain go1.27.3
+toolchain go1.27.4
 
 godebug (
 	multipathtcp=0
@@ -11,6 +11,6 @@ godebug (
 )
 
 require (
-	golang.org/x/net v0.61.0
-	golang.org/x/sys v0.49.0
+	golang.org/x/net v0.62.0
+	golang.org/x/sys v0.50.0
 )
