@@ -41,6 +41,7 @@ type Policy struct {
 	pinResponseDomain    bool
 	pinResponseDomainMap map[string]map[string]struct{}
 	pinA                 map[string]net.IP
+	sieveA               map[string]map[string]struct{}
 }
 
 func NewPolicy(configDirectory string, blockPunycode bool, pinAIP *netip.Addr, pinResponseDomain bool) (*Policy, error) {
@@ -135,6 +136,11 @@ func NewPolicy(configDirectory string, blockPunycode bool, pinAIP *netip.Addr, p
 		return nil, err
 	}
 
+	sieveA, err := readAndValidateSieveA(configDirectory, partialPolicy)
+	if err != nil {
+		return nil, err
+	}
+
 	if len(pinA) > 0 && pinAIP != nil {
 		return nil, fmt.Errorf("the config PinA cannot be used together with the file pin.a")
 	}
@@ -153,6 +159,7 @@ func NewPolicy(configDirectory string, blockPunycode bool, pinAIP *netip.Addr, p
 		pinResponseDomain:    pinResponseDomain,
 		pinResponseDomainMap: pinResponseDomainMap,
 		pinA:                 pinA,
+		sieveA:               sieveA,
 	}, nil
 }
 
@@ -369,6 +376,51 @@ func readAndValidatePinA(configDirectory string, policy Policy) (map[string]net.
 	}
 
 	return pinA, nil
+}
+
+func readAndValidateSieveA(configDirectory string, policy Policy) (map[string]map[string]struct{}, error) {
+	configFilename := configFilenameSieveA
+	sieveARaw, err := readConfig(configDirectory, configFilename)
+	if err != nil {
+		return nil, err
+	}
+
+	sieveA := make(map[string]map[string]struct{})
+	for _, r := range sieveARaw {
+		parts := strings.Split(r, ":")
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("%s expected '<domain>:<ip>', got %s", configFilename, r)
+		}
+
+		domain := parts[0]
+		err := policy.domainHasCorrectFormat(domain)
+		if err != nil {
+			return nil, fmt.Errorf("%s domain '%s': %s", configFilename, domain, err.Error())
+		}
+
+		netIP, err := netip.ParseAddr(parts[1])
+		if err != nil || !netIP.Is4() {
+			return nil, fmt.Errorf("%s invalid ip '%s' for domain '%s'", configFilename, parts[1], domain)
+		}
+
+		ip := netIP.String()
+
+		d, found := sieveA[domain]
+		if !found {
+			d = make(map[string]struct{})
+		}
+
+		_, found = d[ip]
+		if !found {
+			d[ip] = struct{}{}
+		} else {
+			return nil, fmt.Errorf("%s duplicate domain '%s'", configFilename, domain)
+		}
+
+		sieveA[domain] = d
+	}
+
+	return sieveA, nil
 }
 
 func buildSuffixesSearch(TLDs []string, subdomains []string) (*suffixtrie.Node, error) {

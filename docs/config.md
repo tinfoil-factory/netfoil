@@ -172,6 +172,15 @@ List of pinned A records.
 
 Example: `example.com:1.2.3.4`
 
+### sieve.a
+List of `<domain>:<IP>` pairs. IPs not in the list will be removed from the response.
+
+Example:
+```
+example.com:1.2.3.4
+example.com:1.2.3.5
+```
+
 ### known-reserved.ipv4
 List of known reserved IPv4 ranges. These are currently only here to be copy/pasted into `allow.ipv4` and `deny.ipv4`.
 

@@ -42,6 +42,7 @@ type workerResult struct {
 	cacheHit           bool
 	externalRequest    bool
 	pinned             bool
+	sieved             bool
 	logEvents          []LogEvent
 	filterReasons      []FilterReason
 	time               time.Duration
@@ -298,6 +299,7 @@ func (w *worker) handleTCPConnection(conn *net.TCPConn) {
 			cacheHit:        result.cacheHit,
 			externalRequest: result.externalRequest,
 			pinned:          result.pinned,
+			sieved:          result.sieved,
 			logEvents:       result.logEvents,
 			filterReasons:   result.filterReasons,
 			time:            elapsed,
@@ -407,7 +409,7 @@ func logResult(config *Config, result workerResult) {
 			fmt.Printf("    %s\n", reason)
 		}
 
-		fmt.Printf("  cache hit: %t, external request: %t, pinned: %t\n", result.cacheHit, result.externalRequest, result.pinned)
+		fmt.Printf("  cache hit: %t, external request: %t, pinned: %t, sieved: %t\n", result.cacheHit, result.externalRequest, result.pinned, result.sieved)
 		if result.response != nil {
 			fmt.Printf("  response [%s]\n", result.response.Flags.RCODE.Name())
 			for _, answer := range result.response.Answers {
@@ -497,6 +499,7 @@ func (w *worker) start() {
 				cacheHit:           result.cacheHit,
 				externalRequest:    result.externalRequest,
 				pinned:             result.pinned,
+				sieved:             result.sieved,
 				logEvents:          result.logEvents,
 				filterReasons:      result.filterReasons,
 				time:               elapsed,
@@ -522,6 +525,7 @@ type processResponse struct {
 	cacheHit           bool
 	externalRequest    bool
 	pinned             bool
+	sieved             bool
 	logEvents          []LogEvent
 	filterReasons      []FilterReason
 }
@@ -656,6 +660,36 @@ func (w *worker) process(workerTask *workerTask) (processResponse, error) {
 
 			responseAllowed, filterReason := policy.responseIsAllowed(question.Name, question.Type, candidateResponse)
 			result.appendFilterReason(filterReason...)
+
+			if responseAllowed && question.Type == RecordTypeA && len(w.policy.sieveA) > 0 {
+				plainDomain := strings.TrimSuffix(question.Name, ".")
+				sieveIPs, sieveFound := w.policy.sieveA[plainDomain]
+
+				if sieveFound {
+					atLeastOneIP := false
+					newAnswers := make([]Answer, 0)
+					for _, answer := range candidateResponse.Answers {
+						if answer.Type == RecordTypeA {
+							_, found := sieveIPs[answer.IPv4.String()]
+							if found {
+								newAnswers = append(newAnswers, answer)
+								atLeastOneIP = true
+							}
+						} else {
+							newAnswers = append(newAnswers, answer)
+						}
+					}
+
+					candidateResponse.Answers = newAnswers
+					result.sieved = true
+
+					if !atLeastOneIP {
+						result.appendFilterReason("deny because no IP passed the sieve")
+						responseAllowed = false
+					}
+				}
+			}
+
 			if responseAllowed {
 				result.allowed = true
 				result.response = candidateResponse
