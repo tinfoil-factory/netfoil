@@ -27,6 +27,7 @@ const (
 	configFilenameKnownTLDs         = "known.tld"
 	configFilenamePinResponseDomain = "pin.response-domain"
 	configFilenamePinA              = "pin.a"
+	configFilenameSieveA            = "sieve.a"
 
 	defaultMinTTL uint32 = 0
 	defaultMaxTTL uint32 = math.MaxUint32
